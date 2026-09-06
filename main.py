@@ -16,7 +16,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "NASDAQ Scanner Active"
+    return "NASDAQ Scanner Active!"
 
 def run_flask():
     app.run(host='0.0.0.0', port=10000)
@@ -271,7 +271,7 @@ def gun_sonu_raporu_gonder():
         send_telegram_msg("📊 **GÜN SONU RAPORU:** Bugün kriterlere uyan kırılmalar oluşmadı.")
         return
 
-    rapor = "📊 **GÜNÜN MİDAS PERFORMANS ÖZETİ**\n\n"
+    rapor = "📊 **GÜNÜN Hisse PERFORMANS ÖZETİ**\n\n"
     toplam_kar = 0
 
     for symbol, data in gunluk_sinyaller.items():
@@ -334,36 +334,8 @@ def canli_kesintisiz_tarama():
     with ThreadPoolExecutor(max_workers=10) as executor:
         executor.map(process_symbol, symbols)
 
-def test_iki_hisse_mesaji_gonder():
-    """Botun ilk açılışta 2 tane örnek hisse mesajı göndermesini sağlar."""
-    time.sleep(3) # Bot ayağa kalkarken 3 saniye bekler
-    
-    test_hisseleri = ["TEST1", "TEST2"]
-    for i, symbol in enumerate(test_hisseleri, 1):
-        last_price = 1.85 + (i * 0.10)
-        resistance = 2.00 + (i * 0.10)
-        tight_stop = last_price * 0.98
-        tp1 = resistance * 1.05
-        tp2 = resistance * 1.10
-        tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
-        
-        msg = (
-            f"⚡ **NASDAQ ERKEN ALARM: #{symbol}** [2'li Test Mesajı]\n\n"
-            f"📊 **Sinyal Durumu:** 🔥 Patlama Yakın\n"
-            f"📝 **Analiz:** Fiyat dirence dayandı, devasa hacimle direnci zorluyor!\n\n"
-            f"💵 **Anlık Fiyat:** ${last_price:.2f}\n"
-            f"🎯 **Test Edilen Direnç:** ${resistance:.2f}\n"
-            f"🛡️ **Stop (-%2.0 Maksimum):** ${tight_stop:.2f}\n"
-            f"📈 **Hacim Gücü:** 3.4x katı\n\n"
-            f"🎯 **1. Kademe Satış (+%5.0):** ${tp1:.2f}\n"
-            f"🎯 **2. Kademe Satış (+%10.0):** ${tp2:.2f}\n\n"
-            f"🔥 **MOTİVASYON:** Obez olma !\n\n"
-            f"🔗 [TradingView'de Grafiği Aç]({tv_url})"
-        )
-        send_telegram_msg(msg)
-        time.sleep(2) # Mesajlar üst üste binmesin diye 2 saniye aralık bırakır
+def start_scanner_loop():
     send_telegram_msg("🚀 **Nasdaq Scanner Aktif!**")
-    
     while True:
         canli_kesintisiz_tarama()
 
