@@ -79,7 +79,7 @@ def canli_kesintisiz_tarama():
             continue
 
 if __name__ == '__main__':
-    send_telegram_msg("🚀 **$4 Altı Canlı NASDAQ Taraması Başlatıldı! (Sıfır Bekleme)**")
+    send_telegram_msg("🚀 **Canlı NASDAQ Taraması Başlatıldı!**")
     
     # KESİNTİSİZ SONSUZ DÖNGÜ (Durdurulamaz Tarama)
     while True:
