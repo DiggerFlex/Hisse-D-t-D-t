@@ -335,7 +335,7 @@ def canli_kesintisiz_tarama():
         executor.map(process_symbol, symbols)
 
 def start_scanner_loop():
-    send_telegram_msg("🚀 **Nasdaq Haber Scanner Aktif!**")
+    send_telegram_msg("🚀 **Nasdaq Scanner Aktif!**")
     while True:
         canli_kesintisiz_tarama()
 
