@@ -104,7 +104,7 @@ def get_penny_stocks():
 
 
 # ==========================================
-# 5. KIRILIM VE FAKEOUT ANALİZİ (YENİ SİNAN ETİKETLERİ)
+# 5. KIRILIM VE FAKEOUT ANALİZİ
 # ==========================================
 def kirilim_analizi_yap(df, resistance, avg_volume):
     """Son mumun gövde yapısını ve hacmini analiz ederek sahte kırılımları eler."""
@@ -175,7 +175,6 @@ def process_symbol(symbol):
 
                 tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
 
-                # İstenen sıralamada güncellenmiş şablon
                 msg = (
                     f"⚡ **NASDAQ ALARMI: #{symbol}**\n\n"
                     f"📊 **Sinyal Durumu:** {risk_durumu}\n"
@@ -199,26 +198,49 @@ def process_symbol(symbol):
 
 
 # ==========================================
-# 7. TRUMP VE PİYASA AÇIKLAMA MODÜLÜ
+# 7. TRUMP VE PİYASA AÇIKLAMA MODÜLÜ (LİNKSİZ & ETKİ ANALİZLİ)
 # ==========================================
+def piyasa_etkisi_analiz_et(metin):
+    """Haber başlığındaki kelimelere göre NASDAQ için yön tahmini yapar."""
+    metin_lower = metin.lower()
+    
+    olumlu_kelimeler = [
+        "cut", "cuts", "tax cut", "growth", "deal", "support", "boost", 
+        "surge", "up", "rally", "positive", "bull", "lower rate", "deregulation"
+    ]
+    olumsuz_kelimeler = [
+        "tariff", "tariffs", "tax", "ban", "restriction", "warns", "drop", 
+        "fall", "down", "negative", "bear", "sanction", "inflation", "threat"
+    ]
+
+    olumlu_puan = sum(1 for word in olumlu_kelimeler if word in metin_lower)
+    olumsuz_puan = sum(1 for word in olumsuz_kelimeler if word in metin_lower)
+
+    if olumlu_puan > olumsuz_puan:
+        return "📈 NASDAQ Etkisi: OLUMLU (BOĞA)"
+    elif olumsuz_puan > olumlu_puan:
+        return "📉 NASDAQ Etkisi: OLUMSUZ (AYI)"
+    else:
+        return "⚠️ NASDAQ Etkisi: NÖTR / DİKKAT"
+
 def trump_ve_piyasa_haberleri_kontrol_et():
-    """Trump veya NASDAQ'ı etkileyecek kritik açıklamaları bağımsız mesaj olarak atar."""
+    """Haberleri link/detay olmadan, sadece Olumlu/Olumsuz yön etiketiyle atar."""
     global gonderilen_haberler
     rss_url = "https://news.google.com/rss/search?q=Trump+NASDAQ+or+Stock+Market&hl=en-US&gl=US&ceid=US:en"
     
     try:
         feed = feedparser.parse(rss_url)
         for entry in feed.entries[:3]:
-            haber_id = entry.link
+            haber_id = entry.title
             
             if haber_id not in gonderilen_haberler:
                 baslik = entry.title
-                link = entry.link
+                etki = piyasa_etkisi_analiz_et(baslik)
                 
                 haber_mesaji = (
                     f"⚠️ **Trump Açıklama** ⚠️\n\n"
-                    f"📢 **Başlık:** {baslik}\n\n"
-                    f"🔗 **Detay/Link:** {link}"
+                    f"{etki}\n"
+                    f"📢 {baslik}"
                 )
                 
                 send_telegram_msg(haber_mesaji)
@@ -229,7 +251,7 @@ def trump_ve_piyasa_haberleri_kontrol_et():
 def haber_tarama_loop():
     while True:
         trump_ve_piyasa_haberleri_kontrol_et()
-        time.sleep(120) # 2 dakikada bir kontrol eder
+        time.sleep(120)
 
 
 # ==========================================
