@@ -16,8 +16,8 @@ def home():
 def run_flask():
     app.run(host='0.0.0.0', port=10000)
 
-TELEGRAM_BOT_TOKEN = "8750813780:AAFCMXBLA1ZOsMUZz6vrSIJz5ccg94QMsdA"
-TELEGRAM_CHAT_ID = "7743041008"
+TELEGRAM_BOT_TOKEN = "BURAYA_BOT_TOKEN_YAZ"
+TELEGRAM_CHAT_ID = "BURAYA_CHAT_ID_YAZ"
 
 bildirilenler = {}
 gunluk_sinyaller = {}
@@ -189,7 +189,7 @@ def canli_kesintisiz_tarama():
         executor.map(process_symbol, symbols)
 
 def start_scanner_loop():
-    send_telegram_msg("🚀 **Nasdaq Scanner (Minimum Risk Modu) Aktif!**")
+    send_telegram_msg("🚀 **Nasdaq Scanner Aktif!**")
     while True:
         canli_kesintisiz_tarama()
 
