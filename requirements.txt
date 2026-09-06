@@ -1,5 +1,3 @@
 Flask==3.0.2
 requests==2.31.0
-yfinance==0.2.36
-pandas==2.2.0
-ftplibpython
+websocket-client==1.7.0
