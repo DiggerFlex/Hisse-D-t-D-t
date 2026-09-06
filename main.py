@@ -15,7 +15,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "NASDAQ Scanner & News Tracker Active"
+    return "NASDAQ Scanner Active"
 
 def run_flask():
     app.run(host='0.0.0.0', port=10000)
@@ -104,7 +104,7 @@ def get_penny_stocks():
 
 
 # ==========================================
-# 5. KIRILIM VE FAKEOUT ANALİZİ
+# 5. KIRILIM ANALİZİ (İyi / Normal / Fake Kırılım)
 # ==========================================
 def kirilim_analizi_yap(df, resistance, avg_volume):
     """Son mumun gövde yapısını ve hacmini analiz ederek sahte kırılımları eler."""
@@ -198,49 +198,54 @@ def process_symbol(symbol):
 
 
 # ==========================================
-# 7. TRUMP VE PİYASA AÇIKLAMA MODÜLÜ (LİNKSİZ & ETKİ ANALİZLİ)
+# 7. TRUMP KRİZ VE ŞOK AÇIKLAMA MODÜLÜ
 # ==========================================
-def piyasa_etkisi_analiz_et(metin):
-    """Haber başlığındaki kelimelere göre NASDAQ için yön tahmini yapar."""
+def kritik_piyasa_etkisi_analiz_et(metin):
+    """Haber başlığını analiz eder ve sadece Türkçe net yön bilgisi döndürür."""
     metin_lower = metin.lower()
     
     olumlu_kelimeler = [
-        "cut", "cuts", "tax cut", "growth", "deal", "support", "boost", 
-        "surge", "up", "rally", "positive", "bull", "lower rate", "deregulation"
+        "cut tariffs", "tax cut", "trade deal", "peace", "agreement", 
+        "support", "boost", "surge", "deregulation", "growth"
     ]
     olumsuz_kelimeler = [
-        "tariff", "tariffs", "tax", "ban", "restriction", "warns", "drop", 
-        "fall", "down", "negative", "bear", "sanction", "inflation", "threat"
+        "war", "strike", "attack", "sanction", "tariff", "tariffs", 
+        "threat", "china", "russia", "ban", "military", "missile", "crisis"
     ]
 
     olumlu_puan = sum(1 for word in olumlu_kelimeler if word in metin_lower)
     olumsuz_puan = sum(1 for word in olumsuz_kelimeler if word in metin_lower)
 
-    if olumlu_puan > olumsuz_puan:
-        return "📈 NASDAQ Etkisi: OLUMLU (BOĞA)"
-    elif olumsuz_puan > olumlu_puan:
-        return "📉 NASDAQ Etkisi: OLUMSUZ (AYI)"
+    if olumsuz_puan > 0:
+        return "🚨 **NASDAQ Etkisi: Olumsuz**"
+    elif olumlu_puan > 0:
+        return "🚀 **NASDAQ Etkisi: Olumlu**"
     else:
-        return "⚠️ NASDAQ Etkisi: NÖTR / DİKKAT"
+        return "⚠️ **NASDAQ Etkisi: Belirsiz / Riskli**"
 
 def trump_ve_piyasa_haberleri_kontrol_et():
-    """Haberleri link/detay olmadan, sadece Olumlu/Olumsuz yön etiketiyle atar."""
+    """Sadece piyasayı sarsacak kriz/şok açıklamalarını Türkçe formatta bildirir."""
     global gonderilen_haberler
-    rss_url = "https://news.google.com/rss/search?q=Trump+NASDAQ+or+Stock+Market&hl=en-US&gl=US&ceid=US:en"
+    
+    rss_url = "https://news.google.com/rss/search?q=Trump+(war+OR+tariff+OR+sanction+OR+attack+OR+China+OR+strike)&hl=en-US&gl=US&ceid=US:en"
+    
+    kritik_kelimeler = [
+        "war", "tariff", "tariffs", "sanction", "attack", "strike", 
+        "china", "russia", "military", "missile", "threat", "ban", "trade war"
+    ]
     
     try:
         feed = feedparser.parse(rss_url)
         for entry in feed.entries[:3]:
             haber_id = entry.title
+            baslik_lower = entry.title.lower()
             
-            if haber_id not in gonderilen_haberler:
-                baslik = entry.title
-                etki = piyasa_etkisi_analiz_et(baslik)
+            if any(word in baslik_lower for word in kritik_kelimeler) and haber_id not in gonderilen_haberler:
+                etki = kritik_piyasa_etkisi_analiz_et(entry.title)
                 
                 haber_mesaji = (
                     f"⚠️ **Trump Açıklama** ⚠️\n\n"
-                    f"{etki}\n"
-                    f"📢 {baslik}"
+                    f"{etki}"
                 )
                 
                 send_telegram_msg(haber_mesaji)
@@ -304,7 +309,7 @@ def gun_sonu_raporu_gonder():
 
 
 # ==========================================
-# 9. CANLI TARAMA VE PROGRAM BAŞLATICI
+# 9. CANLI TARAMA DÖNGÜSÜ
 # ==========================================
 def canli_kesintisiz_tarama():
     global rapor_gonderildi_bugun
@@ -331,12 +336,63 @@ def start_scanner_loop():
     while True:
         canli_kesintisiz_tarama()
 
+
+# ==========================================
+# 10. TEST SİMÜLASYON FONKSİYONU
+# ==========================================
+def test_mesaj_simulasyonu():
+    """1 dk arayla 5 test mesajı atarak formatı doğrular."""
+    time.sleep(10)
+    send_telegram_msg("🧪 **TEST MODU BAŞLATILDI:** 1 dakika arayla 5 hisse simülasyonu gönderiliyor...")
+    
+    ornek_hisseler = [
+        {"symbol": "GPRO", "price": 1.25, "vol": 3.8, "status": "🔥 İyi Kırılım", "desc": "Mükemmel dolgun mum ve devasa hacim!"},
+        {"symbol": "KOSS", "price": 2.10, "vol": 4.2, "status": "🔥 İyi Kırılım", "desc": "Çok güçlü hacimli kırılım gerçekleşti!"},
+        {"symbol": "SNOA", "price": 0.85, "vol": 2.5, "status": "🟡 Normal Kırılım", "desc": "Direnç üzeri kapanış ve yeterli hacim."},
+        {"symbol": "MARPS", "price": 3.15, "vol": 5.1, "status": "🔥 İyi Kırılım", "desc": "Hacim patlamasıyla birlikte direnç geçildi!"},
+        {"symbol": "CISO", "price": 1.70, "vol": 2.9, "status": "🟡 Normal Kırılım", "desc": "Direnç kırıldı, takip edilebilir."}
+    ]
+
+    for stock in ornek_hisseler:
+        sym = stock["symbol"]
+        price = stock["price"]
+        tight_stop = price * 0.98
+        tp1 = price * 1.05
+        tp2 = price * 1.10
+        tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{sym}/"
+
+        msg = (
+            f"⚡ **NASDAQ ALARMI: #{sym}**\n\n"
+            f"📊 **Sinyal Durumu:** {stock['status']}\n"
+            f"📝 **Analiz:** {stock['desc']}\n\n"
+            f"💵 **Giriş / Kırılım:** ${price:.2f}\n"
+            f"🛡️ **Stop (-%2.0):** ${tight_stop:.2f}\n"
+            f"📈 **Hacim Gücü:** {stock['vol']}x katı\n\n"
+            f"🎯 **1. Kademe Satış (+%5.0):** ${tp1:.2f}\n"
+            f"🎯 **2. Kademe Satış (+%10.0):** ${tp2:.2f}\n\n"
+            f"🔥 **MOTİVASYON:** Obez olma !\n\n"
+            f"🔗 [TradingView'de Grafiği Aç]({tv_url})"
+        )
+        
+        send_telegram_msg(msg)
+        time.sleep(60)
+
+    send_telegram_msg("✅ **TEST TAMAMLANDI:** 5 hisselik simülasyon akışı bitti.")
+
+
+# ==========================================
+# 11. PROGRAM BAŞLATICI
+# ==========================================
 if __name__ == '__main__':
-    # Haber takip sistemini başlat
+    # Haber takip sistemini arka planda çalıştırır
     threading.Thread(target=haber_tarama_loop, daemon=True).start()
     
-    # Canlı hisse tarama sistemini başlat
-    threading.Thread(target=start_scanner_loop, daemon=True).start()
+    # --- MOD SEÇİMİ ---
+    # 1. TEST ETMEK İÇİN (1 dk arayla 5 mesaj atar):
+    threading.Thread(target=test_mesaj_simulasyonu, daemon=True).start()
     
-    # Flask sunucusunu başlat (Render uyanık tutma)
+    # 2. CANLI BORSAYI TARAMAK İÇİN (Test bitince yukarıdaki satırı yorum yapıp alttakini aç):
+    # threading.Thread(target=start_scanner_loop, daemon=True).start()
+    
+    # Render uyanık tutma sunucusu
     run_flask()
