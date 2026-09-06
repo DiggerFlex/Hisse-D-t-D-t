@@ -47,7 +47,7 @@ def get_penny_stocks():
         return []
 
 def kirilim_analizi_yap(df, resistance, avg_volume):
-    """Mum yapısı ve hacme göre yüzdelik risk skoru hesaplar."""
+    """Sıkı filtre: Yüksek riskli mumları eler, sadece kaliteli kırılımları onaylar."""
     last_candle = df.iloc[-1]
     
     close_p = last_candle['Close']
@@ -62,16 +62,15 @@ def kirilim_analizi_yap(df, resistance, avg_volume):
     
     vol_ratio = volume / avg_volume if avg_volume > 0 else 1.0
 
-    if upper_wick > body or close_p < open_p or vol_ratio < 1.5:
-        risk_pct = 85 if upper_wick > (body * 2) else 70
-        return f"🔴 %{risk_pct} RİSK (Fake Kırılım Eğilimi)", "İğnesi uzun/Gövde zayıf veya hacim cılız."
-    elif 1.5 <= vol_ratio < 2.2:
-        return "🟡 %50 RİSK (Yavaş Hacimli Kırılım)", "Kırılım var ancak hacim desteği orta seviyede."
-    else:
-        if close_p > open_p and (body / candle_range) > 0.5:
-            risk_pct = 15 if vol_ratio >= 3.0 else 25
-            return f"🟢 %{risk_pct} RİSK (Gerçek / Onaylı Kırılım)", "Dolgun yeşil mum ve güçlü hacim onayı!"
-        return "🟡 %40 RİSK (Standart Kırılım)", "Direnç üzeri kapanış mevcut."
+    # Yüksek riskli ve zayıf hacimli mumları direkt eleme/uyarma
+    if upper_wick > body or close_p < open_p or vol_ratio < 2.0:
+        return "🔴 HIGH RISK / FAKEOUT", "Cılız hacim veya uzun üst iğne! UZAK DUR."
+    
+    # Çok Güçlü Onaylı Kırılım
+    if close_p > open_p and (body / candle_range) > 0.6 and vol_ratio >= 3.0:
+        return "🟢 %10 RİSK (Çok Güçlü Onaylı Kırılım)", "Mükemmel dolgun mum ve devasa hacim!"
+    
+    return "🟡 %25 RİSK (Standart Kırılım)", "Direnç üzeri kapanış ve yeterli hacim."
 
 def process_symbol(symbol):
     try:
@@ -88,7 +87,6 @@ def process_symbol(symbol):
             return
 
         last_volume = df['Volume'].iloc[-1]
-        last_low = df['Low'].iloc[-1]
         
         resistance = df['High'][:-1].max() 
         avg_volume = df['Volume'][:-1].mean()
@@ -97,30 +95,35 @@ def process_symbol(symbol):
             return
 
         if last_price > resistance:
+            risk_durumu, aciklama = kirilim_analizi_yap(df, resistance, avg_volume)
+            
+            # Yüksek riskli/fakeout ihtimali olanları hiç Telegram'a atma (Zararı önleme filtresi)
+            if "HIGH RISK" in risk_durumu:
+                return
+
             if symbol not in bildirilenler or (time.time() - bildirilenler[symbol]) > 60:
-                
-                risk_durumu, aciklama = kirilim_analizi_yap(df, resistance, avg_volume)
                 vol_ratio = last_volume / avg_volume if avg_volume > 0 else 1.0
                 
-                # --- DINAMIK HEDEF FİYAT HESAPLAMASI ---
-                target_1 = resistance * 1.065  # %6.5 Güvenli Kâr Hedefi
-                target_2 = resistance * 1.135  # %13.5 Riskli/Yüksek Kâr Hedefi
-                stop_price = min(last_low, resistance * 0.95) # Stop seviyesi
+                # --- MİNİMUM RİSKLİ HEDEF VE SIKI STOP HESABI ---
+                target_1 = resistance * 1.04   # %4.0 Hızlı Güvenli Kâr
+                target_2 = resistance * 1.08   # %8.0 İkinci Kademe Kâr
+                
+                # Maksimum %2.0 Sıkı Stop (Minimum Zarar)
+                tight_stop = resistance * 0.98
 
                 tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
 
                 msg = (
-                    f"⚡ **CANLI NASDAQ ALARMI: #{symbol}**\n\n"
+                    f"⚡ **SIKI RİSK ALARMI: #{symbol}**\n\n"
                     f"📊 **Risk Profili:** {risk_durumu}\n"
                     f"📝 **Analiz:** {aciklama}\n\n"
-                    f"💵 **Anlık Fiyat:** ${last_price:.2f}\n"
-                    f"🎯 **Giriş / Direnç:** ${resistance:.2f}\n"
-                    f"📈 **Hacim Sıçraması:** {vol_ratio:.1f}x katı\n\n"
-                    f"🎯 **1. Satış Kademe (Güvenli):** ${target_1:.2f} (+%6.5)\n"
-                    f"🚀 **2. Satış Kademe (Açgözlü):** ${target_2:.2f} (+%13.5)\n"
-                    f"🛡️ **Stop Level (Zarar Kes):** ${stop_price:.2f}\n\n"
-                    f"🔗 [TradingView'de Grafiği Aç]({tv_url})\n"
-                    f"⚠️ *Midas'tan mumu ve hacmi kontrol et!*"
+                    f"💵 **Giriş / Direnç:** ${resistance:.2f}\n"
+                    f"📈 **Hacim Gücü:** {vol_ratio:.1f}x katı\n\n"
+                    f"🎯 **1. Hızlı Satış (Kâr Al):** ${target_1:.2f} (+%4.0)\n"
+                    f"🚀 **2. Hedef Satış:** ${target_2:.2f} (+%8.0)\n"
+                    f"🛡️ **Sıkı Stop (Max Kayıp):** ${tight_stop:.2f} (-%2.0)\n\n"
+                    f"💡 *Strateji: Fiyat +%2 kâra geçince Stop seviyeni alış fiyatın (${resistance:.2f}) üzerine taşıyarak riskini %0'a indir!*\n\n"
+                    f"🔗 [TradingView'de Grafiği Aç]({tv_url})"
                 )
                 send_telegram_msg(msg)
                 bildirilenler[symbol] = time.time()
@@ -164,9 +167,6 @@ def gun_sonu_raporu_gonder():
 
     ort_kar = toplam_kar / len(gunluk_sinyaller) if gunluk_sinyaller else 0
     rapor += f"🎯 **Ortalama Max Potansiyel:** %{ort_kar:.1f}\n"
-    rapor += "_________________________________\n"
-    rapor += "💡 *Kâr hesaplamaları kırılım anındaki direnç fiyatı baz alınmıştır.*"
-
     send_telegram_msg(rapor)
     gunluk_sinyaller.clear()
 
@@ -189,40 +189,7 @@ def canli_kesintisiz_tarama():
         executor.map(process_symbol, symbols)
 
 def start_scanner_loop():
-    send_telegram_msg("🚀 **Nasdaq Scanner Aktif!**")
-    
-    # --- 5 HİSSELİ GEÇİCİ SIMÜLASYON TESTİ ---
-    test_hisseler = [
-        {"symbol": "BRNX", "price": 3.02, "res": 3.00, "vol": 3.3, "risk": "🟢 %15 RİSK (Gerçek / Onaylı Kırılım)", "desc": "Dolgun yeşil mum ve güçlü hacim onayı!"},
-        {"symbol": "SASI", "price": 1.45, "res": 1.40, "vol": 2.1, "risk": "🟡 %50 RİSK (Yavaş Hacimli Kırılım)", "desc": "Kırılım var ancak hacim desteği orta seviyede."},
-        {"symbol": "NVOS", "price": 0.85, "res": 0.82, "vol": 1.2, "risk": "🔴 %85 RİSK (Fake Kırılım Eğilimi)", "desc": "İğnesi uzun/Gövde zayıf veya hacim cılız."},
-        {"symbol": "PBTS", "price": 4.10, "res": 4.00, "vol": 4.5, "risk": "🟢 %15 RİSK (Gerçek / Onaylı Kırılım)", "desc": "Hacim patlaması ve dolgun yeşil gövde!"},
-        {"symbol": "TIRX", "price": 2.15, "res": 2.10, "vol": 1.8, "risk": "🟡 %40 RİSK (Standart Kırılım)", "desc": "Direnç üzeri kapanış mevcut."}
-    ]
-
-    for item in test_hisseler:
-        target_1 = item["res"] * 1.065
-        target_2 = item["res"] * 1.135
-        stop_price = item["res"] * 0.95
-        tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{item['symbol']}/"
-
-        msg = (
-            f"⚡ **CANLI NASDAQ ALARMI: #{item['symbol']}**\n\n"
-            f"📊 **Risk Profili:** {item['risk']}\n"
-            f"📝 **Analiz:** {item['desc']}\n\n"
-            f"💵 **Anlık Fiyat:** ${item['price']:.2f}\n"
-            f"🎯 **Giriş / Direnç:** ${item['res']:.2f}\n"
-            f"📈 **Hacim Sıçraması:** {item['vol']}x katı\n\n"
-            f"🎯 **1. Satış Kademe (Güvenli):** ${target_1:.2f} (+%6.5)\n"
-            f"🚀 **2. Satış Kademe (Açgözlü):** ${target_2:.2f} (+%13.5)\n"
-            f"🛡️ **Stop Level (Zarar Kes):** ${stop_price:.2f}\n\n"
-            f"🔗 [TradingView'de Grafiği Aç]({tv_url})\n"
-            f"⚠️ *Midas'tan mumu ve hacmi kontrol et!*"
-        )
-        send_telegram_msg(msg)
-        time.sleep(1)  # Mesajların Telegram limitine takılmaması için 1 sn ara
-    # ----------------------------------------
-
+    send_telegram_msg("🚀 **Nasdaq Scanner (Minimum Risk Modu) Aktif!**")
     while True:
         canli_kesintisiz_tarama()
 
