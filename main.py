@@ -5,6 +5,7 @@ import requests
 import feedparser
 import yfinance as yf
 import pandas as pd
+from dateutil import parser
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask
 
@@ -104,7 +105,7 @@ def get_penny_stocks():
 
 
 # ==========================================
-# 5. HİSSE BAZLI CANLI FİLTRELEME & ERKEN ALARM
+# 5. HİSSE BAZLI CANLI FİLTRELEME & ERKEN ALARM (KIRILIM ÖNCESİ)
 # ==========================================
 def process_symbol(symbol):
     """Fiyat henüz direnci kırmadan, dirence dayandığı ve hacim patladığı an alarm atar."""
@@ -181,7 +182,7 @@ def process_symbol(symbol):
 
 
 # ==========================================
-# 6. TRUMP KRİZ VE ŞOK AÇIKLAMA MODÜLÜ
+# 6. TRUMP KRİZ VE ŞOK AÇIKLAMA MODÜLÜ (SAAT BAŞI FİLTRELİ)
 # ==========================================
 def kritik_piyasa_etkisi_analiz_et(metin):
     """Haber başlığını analiz eder ve sadece Türkçe net yön bilgisi döndürür."""
@@ -207,23 +208,47 @@ def kritik_piyasa_etkisi_analiz_et(metin):
         return "⚠️ **NASDAQ Etkisi: Belirsiz / Riskli**"
 
 def trump_ve_piyasa_haberleri_kontrol_et():
-    """Sadece piyasayı sarsacak kriz/şok açıklamalarını Türkçe formatta bildirir."""
+    """Saat başlarında çalışır; sadece son 60 dakikadaki KRİTİK kriz haberlerini atar."""
     global gonderilen_haberler
     
-    rss_url = "https://news.google.com/rss/search?q=Trump+(war+OR+tariff+OR+sanction+OR+attack+OR+China+OR+strike)&hl=en-US&gl=US&ceid=US:en"
+    rss_url = "https://news.google.com/rss/search?q=Trump+(war+OR+tariff+OR+Iran+OR+attack+OR+China+OR+military)&hl=en-US&gl=US&ceid=US:en"
     
+    # Sadece borsayı sarsacak ağır kriz/şok kelimeleri
     kritik_kelimeler = [
-        "war", "tariff", "tariffs", "sanction", "attack", "strike", 
+        "war", "tariff", "Iran", "sanction", "attack", "war", 
         "china", "russia", "military", "missile", "threat", "ban", "trade war"
     ]
     
     try:
         feed = feedparser.parse(rss_url)
-        for entry in feed.entries[:3]:
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        
+        for entry in feed.entries[:5]:
             haber_id = entry.title
             baslik_lower = entry.title.lower()
             
-            if any(word in baslik_lower for word in kritik_kelimeler) and haber_id not in gonderilen_haberler:
+            # 1. Zaten gönderilmişse atla
+            if haber_id in gonderilen_haberler:
+                continue
+                
+            # 2. Zaman Kontrolü (Sadece son 60 dakika içindeki taze gelişmeler)
+            if hasattr(entry, 'published'):
+                try:
+                    pub_time = parser.parse(entry.published)
+                    if pub_time.tzinfo is None:
+                        pub_time = pub_time.replace(tzinfo=datetime.timezone.utc)
+                    
+                    zaman_farki_dakika = (now_utc - pub_time).total_seconds() / 60.0
+                    
+                    # 60 dakikadan daha eski olan haberleri ve geçmiş tekrarları atla
+                    if zaman_farki_dakika > 60:
+                        gonderilen_haberler.add(haber_id)
+                        continue
+                except Exception:
+                    pass
+
+            # 3. Yüksek Etkili Kriz/Şok Filtresi
+            if any(word in baslik_lower for word in kritik_kelimeler):
                 etki = kritik_piyasa_etkisi_analiz_et(entry.title)
                 
                 haber_mesaji = (
@@ -233,13 +258,15 @@ def trump_ve_piyasa_haberleri_kontrol_et():
                 
                 send_telegram_msg(haber_mesaji)
                 gonderilen_haberler.add(haber_id)
+                
     except Exception as e:
         print(f"Haber akisi hatasi: {e}")
 
 def haber_tarama_loop():
+    """Haber kontrolünü saat başlarında (her 3600 saniyede bir) çalıştırır."""
     while True:
         trump_ve_piyasa_haberleri_kontrol_et()
-        time.sleep(120)
+        time.sleep(3600)  # Tam saat başı taraması (1 saatlik periyot)
 
 
 # ==========================================
@@ -251,7 +278,7 @@ def gun_sonu_raporu_gonder():
         send_telegram_msg("📊 **GÜN SONU RAPORU:** Bugün kriterlere uyan sinyal oluşmadı.")
         return
 
-    rapor = "📊 **GÜNÜN MİDAS / NASDAQ PERFORMANS ÖZETİ**\n\n"
+    rapor = "📊 **GÜNÜN NASDAQ PERFORMANS ÖZETİ**\n\n"
     toplam_kar = 0
 
     for symbol, data in gunluk_sinyaller.items():
@@ -315,15 +342,15 @@ def canli_kesintisiz_tarama():
         executor.map(process_symbol, symbols)
 
 def start_scanner_loop():
-    send_telegram_msg("🚀 **Nasdaq Erken Uyarı & Haber Scanner Aktif!**")
+    send_telegram_msg("🚀 **Nasdaq Scanner Aktif!**")
     while True:
         canli_kesintisiz_tarama()
 
 if __name__ == '__main__':
-    # Haber takip sistemini arka planda çalıştırır
+    # Haber takip sistemini saat başlarında çalışacak şekilde başlatır
     threading.Thread(target=haber_tarama_loop, daemon=True).start()
     
-    # Canlı hisse tarama sistemini başlatır
+    # Canlı hisse tarama sistemini kesintisiz başlatır
     threading.Thread(target=start_scanner_loop, daemon=True).start()
     
     # Render uyanık tutma sunucusu
