@@ -283,3 +283,49 @@ if __name__ == '__main__':
     threading.Thread(target=start_scanner_loop, daemon=True).start()
     # Flask sunucusunu ön planda çalıştır (Render için)
     run_flask()
+
+# ==========================================
+# TEST SİMÜLASYON FONKSİYONU
+# ==========================================
+def test_mesaj_simulasyonu():
+    """Bot mesaj formatını ve akışını test etmek için 1 dk arayla 5 bildirim atar."""
+    ornek_hisseler = [
+        {"symbol": "GPRO", "price": 1.25, "vol": 3.8, "status": "🔥 A+ GÜÇLÜ SİNYAL", "desc": "Mükemmel dolgun mum ve devasa hacim!"},
+        {"symbol": "KOSS", "price": 2.10, "vol": 4.2, "status": "🔥 A+ GÜÇLÜ SİNYAL", "desc": "Çok güçlü hacimli kırılım gerçekleşti!"},
+        {"symbol": "SNOA", "price": 0.85, "vol": 2.5, "status": "🟡 STANDART SİNYAL", "desc": "Direnç üzeri kapanış ve yeterli hacim."},
+        {"symbol": "MARPS", "price": 3.15, "vol": 5.1, "status": "🔥 A+ GÜÇLÜ SİNYAL", "desc": "Hacim patlamasıyla birlikte direnç geçildi!"},
+        {"symbol": "CISO", "price": 1.70, "vol": 2.9, "status": "🟡 STANDART SİNYAL", "desc": "Direnç kırıldı, takip edilebilir."}
+    ]
+
+    send_telegram_msg("🧪 **TEST MODU BAŞLATILDI:** 1 dakika arayla 5 hisse simülasyonu gönderiliyor...")
+
+    for stock in ornek_hisseler:
+        sym = stock["symbol"]
+        price = stock["price"]
+        tight_stop = price * 0.98
+        tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{sym}/"
+
+        msg = (
+            f"⚡ **NASDAQ ALARMI: #{sym}**\n\n"
+            f"📊 **Sinyal Durumu:** {stock['status']}\n"
+            f"📝 **Analiz:** {stock['desc']}\n\n"
+            f"💵 **Giriş / Kırılım:** ${price:.2f}\n"
+            f"📈 **Hacim Gücü:** {stock['vol']}x katı\n"
+            f"🛡️ **Sıkı Stop:** ${tight_stop:.2f} (-%2.0)\n\n"
+            f"🔥 **MOTİVASYON:** Obez olma !\n\n"
+            f"🔗 [TradingView'de Grafiği Aç]({tv_url})"
+        )
+        
+        send_telegram_msg(msg)
+        time.sleep(60) # 1 dakika arayla gönderir
+
+    send_telegram_msg("✅ **TEST TAMAMLANDI:** 5 hisselik simülasyon akışı bitti.")
+
+
+# ==========================================
+# PROGRAM BAŞLATICI (TEST İÇİN GÜNCELLENDİ)
+# ==========================================
+if __name__ == '__main__':
+    # Canlı tarama yerine geçici olarak test fonksiyonunu çalıştırıyoruz:
+    threading.Thread(target=test_mesaj_simulasyonu, daemon=True).start()
+    run_flask()
