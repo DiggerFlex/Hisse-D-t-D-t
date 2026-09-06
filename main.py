@@ -16,8 +16,8 @@ def home():
 def run_flask():
     app.run(host='0.0.0.0', port=10000)
 
-TELEGRAM_BOT_TOKEN = "BURAYA_BOT_TOKEN_YAZ"
-TELEGRAM_CHAT_ID = "BURAYA_CHAT_ID_YAZ"
+TELEGRAM_BOT_TOKEN = "8750813780:AAFCMXBLA1ZOsMUZz6vrSIJz5ccg94QMsdA"
+TELEGRAM_CHAT_ID = "7743041008"
 
 bildirilenler = {}
 gunluk_sinyaller = {}
