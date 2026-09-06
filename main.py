@@ -11,7 +11,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "NASDAQ Scanner Active"
+    return "Dipper Nasdaq Scanner"
 
 def run_flask():
     app.run(host='0.0.0.0', port=10000)
@@ -129,7 +129,7 @@ def canli_kesintisiz_tarama():
                         f"⚡ **KESİNTİSİZ CANLI ALARM: #{symbol}**\n\n"
                         f"💵 **Anlık Fiyat:** ${last_price:.2f}\n"
                         f"🎯 **Kırılan Direnç:** ${resistance:.2f}\n"
-                        f"📊 **Hacim Sıçraması:** Ortalamanin {last_volume/avg_volume:.1f}x katı!\n"
+                        f"🚀 **Hacim Sıçraması:** Ortalamanin {last_volume/avg_volume:.1f}x katı!\n"
                         f"🛡️ **Stop Level:** ${last_low:.2f}\n\n"
                         f"⚠️ *Midas'tan anında kontrol et!*"
                     )
@@ -144,7 +144,7 @@ def canli_kesintisiz_tarama():
             continue
 
 def start_scanner_loop():
-    send_telegram_msg("🚀 **$4 Altı Canlı NASDAQ Taraması Aktif! (Gün Sonu Raporlamalı)**")
+    send_telegram_msg("🚀 **Canlı NASDAQ Taraması Aktif!**")
     while True:
         canli_kesintisiz_tarama()
 
