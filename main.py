@@ -133,9 +133,6 @@ def process_symbol(symbol):
             return
 
         # --- KIRILIM ÖNCESİ (PRE-BREAKOUT) MANTIGI ---
-        # 1. Fiyat henüz direnci KIRMADI (last_price <= resistance)
-        # 2. Fiyat dirence %1.5 veya daha yakın (last_price >= resistance * 0.985)
-        # 3. Son mum yeşil (last_price > open_price)
         distance_to_resistance = (resistance - last_price) / resistance if resistance > 0 else 1.0
         vol_ratio = last_volume / avg_volume if avg_volume > 0 else 1.0
 
@@ -152,7 +149,8 @@ def process_symbol(symbol):
                 return  # Hacimsiz yaklaşmaları ele
 
             if symbol not in bildirilenler or (time.time() - bildirilenler[symbol]) > 60:
-                tight_stop = last_price * 0.98   # Anlık giriş fiyatının %2 altı
+                # Stop seviyesi: İzin verilen en yüksek değer olan tam %2.0 kayıp sınırı
+                tight_stop = last_price * 0.98   
                 tp1 = resistance * 1.05          # Direnç kırıldıktan sonraki +%5
                 tp2 = resistance * 1.10          # Direnç kırıldıktan sonraki +%10
 
@@ -164,7 +162,7 @@ def process_symbol(symbol):
                     f"📝 **Analiz:** {aciklama}\n\n"
                     f"💵 **Anlık Fiyat:** ${last_price:.2f}\n"
                     f"🎯 **Test Edilen Direnç:** ${resistance:.2f}\n"
-                    f"🛡️ **Stop (-%2.0):** ${tight_stop:.2f}\n"
+                    f"🛡️ **Stop (-%2.0 Maksimum):** ${tight_stop:.2f}\n"
                     f"📈 **Hacim Gücü:** {vol_ratio:.1f}x katı\n\n"
                     f"🎯 **1. Kademe Satış (+%5.0):** ${tp1:.2f}\n"
                     f"🎯 **2. Kademe Satış (+%10.0):** ${tp2:.2f}\n\n"
@@ -205,17 +203,16 @@ def kritik_piyasa_etkisi_analiz_et(metin):
     elif olumlu_puan > 0:
         return "🚀 **NASDAQ Etkisi: Olumlu**"
     else:
-        return "⚠️ **NASDAQ Etkisi: Belirsiz / Riskli**"
+        return "⚠️ **NASDAQ Etkisi: Riskli**"
 
 def trump_ve_piyasa_haberleri_kontrol_et():
     """Saat başlarında çalışır; sadece son 60 dakikadaki KRİTİK kriz haberlerini atar."""
     global gonderilen_haberler
     
-    rss_url = "https://news.google.com/rss/search?q=Trump+(war+OR+tariff+OR+Iran+OR+attack+OR+China+OR+military)&hl=en-US&gl=US&ceid=US:en"
+    rss_url = "https://news.google.com/rss/search?q=Trump+(war+OR+tariff+OR+sanction+OR+attack+OR+China+OR+strike)&hl=en-US&gl=US&ceid=US:en"
     
-    # Sadece borsayı sarsacak ağır kriz/şok kelimeleri
     kritik_kelimeler = [
-        "war", "tariff", "Iran", "sanction", "attack", "war", 
+        "war", "tariff", "tariffs", "sanction", "attack", "strike", 
         "china", "russia", "military", "missile", "threat", "ban", "trade war"
     ]
     
@@ -227,11 +224,9 @@ def trump_ve_piyasa_haberleri_kontrol_et():
             haber_id = entry.title
             baslik_lower = entry.title.lower()
             
-            # 1. Zaten gönderilmişse atla
             if haber_id in gonderilen_haberler:
                 continue
                 
-            # 2. Zaman Kontrolü (Sadece son 60 dakika içindeki taze gelişmeler)
             if hasattr(entry, 'published'):
                 try:
                     pub_time = parser.parse(entry.published)
@@ -240,14 +235,12 @@ def trump_ve_piyasa_haberleri_kontrol_et():
                     
                     zaman_farki_dakika = (now_utc - pub_time).total_seconds() / 60.0
                     
-                    # 60 dakikadan daha eski olan haberleri ve geçmiş tekrarları atla
                     if zaman_farki_dakika > 60:
                         gonderilen_haberler.add(haber_id)
                         continue
                 except Exception:
                     pass
 
-            # 3. Yüksek Etkili Kriz/Şok Filtresi
             if any(word in baslik_lower for word in kritik_kelimeler):
                 etki = kritik_piyasa_etkisi_analiz_et(entry.title)
                 
@@ -266,7 +259,7 @@ def haber_tarama_loop():
     """Haber kontrolünü saat başlarında (her 3600 saniyede bir) çalıştırır."""
     while True:
         trump_ve_piyasa_haberleri_kontrol_et()
-        time.sleep(3600)  # Tam saat başı taraması (1 saatlik periyot)
+        time.sleep(3600)
 
 
 # ==========================================
@@ -275,10 +268,10 @@ def haber_tarama_loop():
 def gun_sonu_raporu_gonder():
     global gunluk_sinyaller
     if not gunluk_sinyaller:
-        send_telegram_msg("📊 **GÜN SONU RAPORU:** Bugün kriterlere uyan sinyal oluşmadı.")
+        send_telegram_msg("📊 **GÜN SONU RAPORU:** Bugün kriterlere uyan kırılmalar oluşmadı.")
         return
 
-    rapor = "📊 **GÜNÜN NASDAQ PERFORMANS ÖZETİ**\n\n"
+    rapor = "📊 **GÜNÜN MİDAS PERFORMANS ÖZETİ**\n\n"
     toplam_kar = 0
 
     for symbol, data in gunluk_sinyaller.items():
@@ -342,7 +335,7 @@ def canli_kesintisiz_tarama():
         executor.map(process_symbol, symbols)
 
 def start_scanner_loop():
-    send_telegram_msg("🚀 **Nasdaq Scanner Aktif!**")
+    send_telegram_msg("🚀 **Nasdaq Haber Scanner Aktif!**")
     while True:
         canli_kesintisiz_tarama()
 
