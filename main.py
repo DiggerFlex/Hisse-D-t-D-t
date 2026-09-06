@@ -1,4 +1,5 @@
 import time
+import datetime
 import threading
 import requests
 import yfinance as yf
@@ -20,6 +21,8 @@ TELEGRAM_BOT_TOKEN = "8750813780:AAFCMXBLA1ZOsMUZz6vrSIJz5ccg94QMsdA"
 TELEGRAM_CHAT_ID = "7743041008"
 
 bildirilenler = {}
+gunluk_sinyaller = {} # Günlük kâr takibi için verileri saklar
+rapor_gonderildi_bugun = False
 
 def send_telegram_msg(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -39,7 +42,58 @@ def get_penny_stocks():
         print(f"Liste alinirken hata: {e}")
         return []
 
+def gun_sonu_raporu_gonder():
+    """Borsa kapanışında (TSİ 23:00) günlük kâr performans raporu atar."""
+    global gunluk_sinyaller
+    if not gunluk_sinyaller:
+        send_telegram_msg("📊 **GÜN SONU RAPORU:** Bugün kriterlere uyan sinyal oluşmadı.")
+        return
+
+    rapor = "📊 **GÜNÜN MİDAS / NASDAQ PERFORMANS ÖZETİ**\n\n"
+    toplam_kar = 0
+
+    for symbol, data in gunluk_sinyaller.items():
+        try:
+            ticker = yf.Ticker(symbol)
+            df = ticker.history(period="1d", interval="1m")
+            
+            entry = data['entry']
+            kapanis = df['Close'].iloc[-1] if not df.empty else entry
+            zirve = df['High'].max() if not df.empty else entry
+            
+            max_kar = ((zirve - entry) / entry) * 100
+            kapanis_kar = ((kapanis - entry) / entry) * 100
+            toplam_kar += max_kar
+
+            rapor += (
+                f"🔹 **#{symbol}**\n"
+                f"  • Kırılım Fiyatı: ${entry:.2f}\n"
+                f"  • Gün İçi Zirve: ${zirve:.2f} (🚀 **%{max_kar:.1f} Max Kâr**)\n"
+                f"  • Kapanış: ${kapanis:.2f} (%{kapanis_kar:.1f})\n\n"
+            )
+        except Exception:
+            continue
+
+    ort_kar = toplam_kar / len(gunluk_sinyaller) if gunluk_sinyaller else 0
+    rapor += f"🎯 **Ortalama Max Potansiyel:** %{ort_kar:.1f}\n"
+    rapor += "_________________________________\n"
+    rapor += "💡 *Kâr hesaplamaları kırılım anındaki direnç fiyatı baz alınmıştır.*"
+
+    send_telegram_msg(rapor)
+    gunluk_sinyaller.clear() # Gün bitti, listeyi sıfırla
+
 def canli_kesintisiz_tarama():
+    global rapor_gonderildi_bugun
+    
+    # Zaman Kontrolü (TSİ 23:00'da rapor gönderimi)
+    now = datetime.datetime.utcnow() + datetime.timedelta(hours=3) # TSİ (UTC+3)
+    if now.hour == 23 and now.minute == 0:
+        if not rapor_gonderildi_bugun:
+            gun_sonu_raporu_gonder()
+            rapor_gonderildi_bugun = True
+    elif now.hour == 0:
+        rapor_gonderildi_bugun = False # Gece yarısı resetle
+
     symbols = get_penny_stocks()
     if not symbols:
         return
@@ -81,17 +135,19 @@ def canli_kesintisiz_tarama():
                     )
                     send_telegram_msg(msg)
                     bildirilenler[symbol] = time.time()
+                    
+                    # Günlük rapora kaydet
+                    if symbol not in gunluk_sinyaller:
+                        gunluk_sinyaller[symbol] = {'entry': last_price}
 
         except Exception:
             continue
 
 def start_scanner_loop():
-    send_telegram_msg("🚀 **Canlı NASDAQ Taraması Aktif!**")
+    send_telegram_msg("🚀 **$4 Altı Canlı NASDAQ Taraması Aktif! (Gün Sonu Raporlamalı)**")
     while True:
         canli_kesintisiz_tarama()
 
 if __name__ == '__main__':
-    # Tarama döngüsünü arka planda başlat
     threading.Thread(target=start_scanner_loop, daemon=True).start()
-    # Flask sunucusunu ana kanalda çalıştır (Render port hatasını engeller)
     run_flask()
