@@ -1,8 +1,21 @@
 import time
+import threading
 import requests
 import yfinance as yf
 import pandas as pd
+from flask import Flask
 
+# --- RENDER PORT DİNLEMESİ İÇİN WEB SUNUCUSU ---
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "NASDAQ Scanner Active"
+
+def run_flask():
+    app.run(host='0.0.0.0', port=10000)
+
+# --- TELEGRAM VE TARAMA MANTIĞI ---
 TELEGRAM_BOT_TOKEN = "8750813780:AAFCMXBLA1ZOsMUZz6vrSIJz5ccg94QMsdA"
 TELEGRAM_CHAT_ID = "7743041008"
 
@@ -17,7 +30,6 @@ def send_telegram_msg(message):
         print(f"Telegram Hatasi: {e}")
 
 def get_penny_stocks():
-    """NASDAQ verisinden $4 alti hisse sembollerini anlik getirir"""
     try:
         url = "ftp://ftp.nasdaqtrader.com/SymbolDirectory/nasdaqlisted.txt"
         df = pd.read_csv(url, sep="|")
@@ -32,11 +44,9 @@ def canli_kesintisiz_tarama():
     if not symbols:
         return
 
-    # Hisseleri anlik sirayla tara
     for symbol in symbols:
         try:
             ticker = yf.Ticker(symbol)
-            # Son 1 gunluk 1 dakikalik anlik mum verisi
             df = ticker.history(period="1d", interval="1m")
 
             if df.empty or len(df) < 15:
@@ -44,25 +54,22 @@ def canli_kesintisiz_tarama():
 
             last_price = df['Close'].iloc[-1]
 
-            # 🛑 SADECE $4 ALTI PENNY STOCK FİLTRESİ
             if last_price >= 4.00 or last_price <= 0.05:
                 continue
 
             last_volume = df['Volume'].iloc[-1]
             last_low = df['Low'].iloc[-1]
             
-            resistance = df['High'].iloc[-16:-1].max() # Son 15 dakikalik direnç
-            avg_volume = df['Volume'].iloc[-16:-1].mean() # Son 15 dakikalik hacim ortalamasi
+            resistance = df['High'].iloc[-16:-1].max()
+            avg_volume = df['Volume'].iloc[-16:-1].mean()
 
-            if avg_volume < 3000: # Sıfır hacimli ölü hisseleri pas geç
+            if avg_volume < 3000:
                 continue
 
-            # STRATEJİ: Direnç Kırılımı + Hacim Patlaması (>= 1.5x)
             is_breakout = last_price > resistance
             is_volume_confirm = last_volume > (avg_volume * 1.5)
 
             if is_breakout and is_volume_confirm:
-                # 15 dakika içinde aynı hisse için tekrar mesaj atıp spam yapmaz
                 if symbol not in bildirilenler or (time.time() - bildirilenler[symbol]) > 900:
                     msg = (
                         f"⚡ **KESİNTİSİZ CANLI ALARM: #{symbol}**\n\n"
@@ -78,9 +85,13 @@ def canli_kesintisiz_tarama():
         except Exception:
             continue
 
-if __name__ == '__main__':
-    send_telegram_msg("🚀 **Canlı NASDAQ Taraması Başlatıldı!**")
-    
-    # KESİNTİSİZ SONSUZ DÖNGÜ (Durdurulamaz Tarama)
+def start_scanner_loop():
+    send_telegram_msg("🚀 **Canlı NASDAQ Taraması Aktif!**")
     while True:
         canli_kesintisiz_tarama()
+
+if __name__ == '__main__':
+    # Tarama döngüsünü arka planda başlat
+    threading.Thread(target=start_scanner_loop, daemon=True).start()
+    # Flask sunucusunu ana kanalda çalıştır (Render port hatasını engeller)
+    run_flask()
