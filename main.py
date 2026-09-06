@@ -4,6 +4,7 @@ import threading
 import requests
 import yfinance as yf
 import pandas as pd
+from concurrent.futures import ThreadPoolExecutor
 from flask import Flask
 
 # --- RENDER PORT DİNLEMESİ İÇİN WEB SUNUCUSU ---
@@ -11,7 +12,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Dipper Nasdaq Scanner"
+    return "NASDAQ Scanner Active"
 
 def run_flask():
     app.run(host='0.0.0.0', port=10000)
@@ -21,7 +22,7 @@ TELEGRAM_BOT_TOKEN = "8750813780:AAFCMXBLA1ZOsMUZz6vrSIJz5ccg94QMsdA"
 TELEGRAM_CHAT_ID = "7743041008"
 
 bildirilenler = {}
-gunluk_sinyaller = {} # Günlük kâr takibi için verileri saklar
+gunluk_sinyaller = {}
 rapor_gonderildi_bugun = False
 
 def send_telegram_msg(message):
@@ -42,14 +43,96 @@ def get_penny_stocks():
         print(f"Liste alinirken hata: {e}")
         return []
 
+def kirilim_analizi_yap(df, resistance, avg_volume):
+    """Mum yapısı ve hacme göre yüzdelik risk skoru hesaplar."""
+    last_candle = df.iloc[-1]
+    
+    close_p = last_candle['Close']
+    open_p = last_candle['Open']
+    high_p = last_candle['High']
+    low_p = last_candle['Low']
+    volume = last_candle['Volume']
+    
+    body = abs(close_p - open_p)
+    candle_range = high_p - low_p if (high_p - low_p) > 0 else 0.01
+    upper_wick = high_p - max(open_p, close_p)
+    
+    vol_ratio = volume / avg_volume if avg_volume > 0 else 1.0
+
+    # 1. YÜKSEK RİSK (%70 - %90 Risk / Fake Kırılım Şüphesi)
+    if upper_wick > body or close_p < open_p or vol_ratio < 1.5:
+        risk_pct = 85 if upper_wick > (body * 2) else 70
+        return f"🔴 %{risk_pct} RİSK (Fake Kırılım Eğilimi)", "İğnesi uzun/Gövde zayıf veya hacim cılız."
+
+    # 2. ORTA RİSK (%40 - %60 Risk)
+    elif 1.5 <= vol_ratio < 2.2:
+        return "🟡 %50 RİSK (Yavaş Hacimli Kırılım)", "Kırılım var ancak hacim desteği orta seviyede."
+
+    # 3. DÜŞÜK RİSK (%10 - %30 Risk / Onaylı Kırılım)
+    else:
+        if close_p > open_p and (body / candle_range) > 0.5:
+            risk_pct = 15 if vol_ratio >= 3.0 else 25
+            return f"🟢 %{risk_pct} RİSK (Gerçek / Onaylı Kırılım)", "Dolgun yeşil mum ve güçlü hacim onayı!"
+        return "🟡 %40 RİSK (Standart Kırılım)", "Direnç üzeri kapanış mevcut."
+        
+def process_symbol(symbol):
+    """Her bir hisseyi paralel olarak analiz eden fonksiyon."""
+    try:
+        ticker = yf.Ticker(symbol)
+        df = ticker.history(period="1d", interval="1m")
+
+        if df.empty or len(df) < 20:
+            return
+
+        last_price = df['Close'].iloc[-1]
+
+        # --- FİYAT ARALIĞI: $0.05 - $10.00 ---
+        if last_price >= 10.00 or last_price <= 0.05:
+            return
+
+        last_volume = df['Volume'].iloc[-1]
+        last_low = df['Low'].iloc[-1]
+        
+        # Günün başından beri görülen en yüksek direnç
+        resistance = df['High'][:-1].max() 
+        avg_volume = df['Volume'][:-1].mean()
+
+        if avg_volume < 1000:
+            return
+
+        if last_price > resistance:
+            # Cooldown süresi: 60 saniye (1 dakika)
+            if symbol not in bildirilenler or (time.time() - bildirilenler[symbol]) > 60:
+                
+                risk_durumu, aciklama = kirilim_analizi_yap(df, resistance, avg_volume)
+                vol_ratio = last_volume / avg_volume if avg_volume > 0 else 1.0
+
+                msg = (
+                    f"⚡ **CANLI NASDAQ ALARMI: #{symbol}**\n\n"
+                    f"📊 **Risk Profili:** {risk_durumu}\n"
+                    f"📝 **Analiz:** {aciklama}\n\n"
+                    f"💵 **Anlık Fiyat:** ${last_price:.2f}\n"
+                    f"🎯 **Açılıştan Beri Zirve (Direnç):** ${resistance:.2f}\n"
+                    f"📈 **Hacim Sıçraması:** {vol_ratio:.1f}x katı\n"
+                    f"🛡️ **Stop Level:** ${last_low:.2f}\n\n"
+                    f"⚠️ *Midas'tan mumu ve hacmi kontrol et!*"
+                )
+                send_telegram_msg(msg)
+                bildirilenler[symbol] = time.time()
+                
+                if symbol not in gunluk_sinyaller:
+                    gunluk_sinyaller[symbol] = {'entry': last_price}
+
+    except Exception:
+        pass
+
 def gun_sonu_raporu_gonder():
-    """Borsa kapanışında (TSİ 23:00) günlük kâr performans raporu atar."""
     global gunluk_sinyaller
     if not gunluk_sinyaller:
         send_telegram_msg("📊 **GÜN SONU RAPORU:** Bugün kriterlere uyan sinyal oluşmadı.")
         return
 
-    rapor = "📊 **GÜNÜN MİDAS / NASDAQ PERFORMANS ÖZETİ**\n\n"
+    rapor = "📊 **GÜNÜN NASDAQ PERFORMANS ÖZETİ TEBRİKLER**\n\n"
     toplam_kar = 0
 
     for symbol, data in gunluk_sinyaller.items():
@@ -80,73 +163,29 @@ def gun_sonu_raporu_gonder():
     rapor += "💡 *Kâr hesaplamaları kırılım anındaki direnç fiyatı baz alınmıştır.*"
 
     send_telegram_msg(rapor)
-    gunluk_sinyaller.clear() # Gün bitti, listeyi sıfırla
+    gunluk_sinyaller.clear()
 
 def canli_kesintisiz_tarama():
-
     global rapor_gonderildi_bugun
-    # ... kodun geri kalanı aynen devam eder ...
     
-    # Zaman Kontrolü (TSİ 23:00'da rapor gönderimi)
     now = datetime.datetime.utcnow() + datetime.timedelta(hours=3) # TSİ (UTC+3)
     if now.hour == 23 and now.minute == 0:
         if not rapor_gonderildi_bugun:
             gun_sonu_raporu_gonder()
             rapor_gonderildi_bugun = True
     elif now.hour == 0:
-        rapor_gonderildi_bugun = False # Gece yarısı resetle
+        rapor_gonderildi_bugun = False
 
     symbols = get_penny_stocks()
     if not symbols:
         return
 
-    for symbol in symbols:
-        try:
-            ticker = yf.Ticker(symbol)
-            df = ticker.history(period="1d", interval="1m")
-
-            if df.empty or len(df) < 15:
-                continue
-
-            last_price = df['Close'].iloc[-1]
-
-            if last_price >= 4.00 or last_price <= 0.05:
-                continue
-
-            last_volume = df['Volume'].iloc[-1]
-            last_low = df['Low'].iloc[-1]
-            
-            resistance = df['High'].iloc[-16:-1].max()
-            avg_volume = df['Volume'].iloc[-16:-1].mean()
-
-            if avg_volume < 3000:
-                continue
-
-            is_breakout = last_price > resistance
-            is_volume_confirm = last_volume > (avg_volume * 1.5)
-
-            if is_breakout and is_volume_confirm:
-                if symbol not in bildirilenler or (time.time() - bildirilenler[symbol]) > 60:
-                    msg = (
-                        f"⚡ **KESİNTİSİZ CANLI ALARM: #{symbol}**\n\n"
-                        f"💵 **Anlık Fiyat:** ${last_price:.2f}\n"
-                        f"🎯 **Kırılan Direnç:** ${resistance:.2f}\n"
-                        f"🚀 **Hacim Sıçraması:** Ortalamanin {last_volume/avg_volume:.1f}x katı!\n"
-                        f"🛡️ **Stop Level:** ${last_low:.2f}\n\n"
-                        f"⚠️ *Midas'tan anında kontrol et!*"
-                    )
-                    send_telegram_msg(msg)
-                    bildirilenler[symbol] = time.time()
-                    
-                    # Günlük rapora kaydet
-                    if symbol not in gunluk_sinyaller:
-                        gunluk_sinyaller[symbol] = {'entry': last_price}
-
-        except Exception:
-            continue
+    # Hisseleri 10 paralel kanaldan aynı anda hızlıca tarar
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        executor.map(process_symbol, symbols)
 
 def start_scanner_loop():
-    send_telegram_msg("🚀 **Canlı NASDAQ Taraması Aktif!**")
+    send_telegram_msg("🚀 **Nasdaq Scanner Aktif!**")
     while True:
         canli_kesintisiz_tarama()
 
