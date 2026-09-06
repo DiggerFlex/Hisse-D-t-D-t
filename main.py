@@ -191,6 +191,28 @@ def canli_kesintisiz_tarama():
 
 def start_scanner_loop():
     send_telegram_msg("🚀 **Nasdaq Scanner Aktif!**")
+    
+    # --- GEÇİCİ TEST MESAJI (İşlevsellik Kontrolü) ---
+    test_df = pd.DataFrame([{
+        'Open': 2.30, 'High': 2.55, 'Low': 2.28, 'Close': 2.50, 'Volume': 50000
+    }])
+    risk_durumu, aciklama = kirilim_analizi_yap(test_df, resistance=2.40, avg_volume=15000)
+    tv_url = "https://www.tradingview.com/symbols/NASDAQ-AAPL/"
+    
+    test_msg = (
+        f"⚡ **CANLI NASDAQ ALARMI: #AAPL (TEST)**\n\n"
+        f"📊 **Risk Profili:** {risk_durumu}\n"
+        f"📝 **Analiz:** {aciklama}\n\n"
+        f"💵 **Anlık Fiyat:** $2.50\n"
+        f"🎯 **Günün Zirvesi (Direnç):** $2.40\n"
+        f"📈 **Hacim Sıçraması:** 3.3x katı\n"
+        f"🛡️ **Zarar Kes (Stop):** $2.28\n\n"
+        f"🔗 [TradingView'de Grafiği Aç]({tv_url})\n"
+        f"⚠️ *Midas'tan mumu ve hacmi kontrol et!*"
+    )
+    send_telegram_msg(test_msg)
+    # -----------------------------------------------
+    
     while True:
         canli_kesintisiz_tarama()
 
