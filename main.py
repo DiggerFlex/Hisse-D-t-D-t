@@ -7,23 +7,41 @@ import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask
 
+# ==========================================
+# 1. RENDER UYANIK TUTMA (FLASK SUNUCUSU)
+# ==========================================
 app = Flask(__name__)
 
 @app.route('/')
 def home():
+    # Render'ın varsayılan portta uygulamanın canlı olduğunu anlaması için basit endpoint
     return "NASDAQ Scanner Active"
 
 def run_flask():
     app.run(host='0.0.0.0', port=10000)
 
+
+# ==========================================
+# 2. AYARLAR VE DİNAMİK DEĞİŞKENLER
+# ==========================================
+# Telegram API bilgilerin
 TELEGRAM_BOT_TOKEN = "8750813780:AAFCMXBLA1ZOsMUZz6vrSIJz5ccg94QMsdA"
 TELEGRAM_CHAT_ID = "7743041008"
 
-bildirilenler = {}
-gunluk_sinyaller = {}
-rapor_gonderildi_bugun = False
+# Telegram /limit komutuyla anlık değiştirilebilir fiyat limiti (Varsayılan: $3.50)
+MAX_PRICE_LIMIT = 3.50
 
+bildirilenler = {}          # Hisselere sürekli üst üste alarm atmamak için zaman kaydı
+gunluk_sinyaller = {}       # Gün sonu performans raporu için sinyal kaydı
+rapor_gonderildi_bugun = False
+last_update_id = 0          # Telegram komut takibi için mesaj kimliği
+
+
+# ==========================================
+# 3. TELEGRAM İLETİŞİM FONKSİYONLARI
+# ==========================================
 def send_telegram_msg(message):
+    """Telegram API üzerinden belirlenen kanala Markdown formatında mesaj atar."""
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID, 
@@ -36,7 +54,45 @@ def send_telegram_msg(message):
     except Exception as e:
         print(f"Telegram Hatasi: {e}")
 
+def check_telegram_commands():
+    """
+    Telegram'dan gelen komutları anlık dinler.
+    Örn: Telegram'a '/limit 2.5' yazarsan tarama üst sınırını anında $2.50 yapar.
+    """
+    global MAX_PRICE_LIMIT, last_update_id
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
+    
+    try:
+        res = requests.get(url, params={"offset": last_update_id + 1, "timeout": 2}).json()
+        if "result" in res:
+            for update in res["result"]:
+                last_update_id = update["update_id"]
+                if "message" in update and "text" in update["message"]:
+                    text = update["message"]["text"].strip()
+                    
+                    if text.startswith("/limit"):
+                        parts = text.split()
+                        if len(parts) == 1:
+                            send_telegram_msg(f"ℹ️ **Mevcut Üst Fiyat Limiti:** ${MAX_PRICE_LIMIT:.2f}")
+                        elif len(parts) == 2:
+                            try:
+                                new_limit = float(parts[1])
+                                if 0.1 <= new_limit <= 20.0:
+                                    MAX_PRICE_LIMIT = new_limit
+                                    send_telegram_msg(f"✅ **Fiyat limiti başarıyla güncellendi:** ${MAX_PRICE_LIMIT:.2f}")
+                                else:
+                                    send_telegram_msg("⚠️ Lütfen $0.10 ile $20.00 arasında bir değer girin.")
+                            except ValueError:
+                                send_telegram_msg("⚠️ Geçersiz format! Örnek kullanım: `/limit 3.5` veya `/limit 5`")
+    except Exception:
+        pass
+
+
+# ==========================================
+# 4. BORSADAN HİSSE LİSTESİ ÇEKME
+# ==========================================
 def get_penny_stocks():
+    """NASDAQ FTP sunucusundan tüm aktif listelenmiş hisse sembollerini anlık çeker."""
     try:
         url = "ftp://ftp.nasdaqtrader.com/SymbolDirectory/nasdaqlisted.txt"
         df = pd.read_csv(url, sep="|")
@@ -46,8 +102,15 @@ def get_penny_stocks():
         print(f"Liste alinirken hata: {e}")
         return []
 
+
+# ==========================================
+# 5. KIRILIM VE FAKEOUT (SAHTE MUM) ANALİZİ
+# ==========================================
 def kirilim_analizi_yap(df, resistance, avg_volume):
-    """Sıkı filtre: Yüksek riskli mumları eler, sadece kaliteli kırılımları onaylar."""
+    """
+    Son mumun gövde yapısını ve hacmini analiz eder.
+    Sahte kırılımları (uzun üst iğneli tuzak mumları) eler.
+    """
     last_candle = df.iloc[-1]
     
     close_p = last_candle['Close']
@@ -62,17 +125,24 @@ def kirilim_analizi_yap(df, resistance, avg_volume):
     
     vol_ratio = volume / avg_volume if avg_volume > 0 else 1.0
 
-    # Yüksek riskli ve zayıf hacimli mumları direkt eleme/uyarma
+    # Üst iğnesi gövdesinden büyükse veya hacim yetersizse tuzaktır, direkt elenir
     if upper_wick > body or close_p < open_p or vol_ratio < 2.0:
-        return "🔴 HIGH RISK / FAKEOUT", "Cılız hacim veya uzun üst iğne! UZAK DUR."
+        return "🔴 FAKEOUT SİNYALİ", "Cılız hacim veya uzun üst iğne! UZAK DUR."
     
-    # Çok Güçlü Onaylı Kırılım
+    # Hacim 3.0x üstünde ve gövde dolgunsa en güçlü sinyaldir
     if close_p > open_p and (body / candle_range) > 0.6 and vol_ratio >= 3.0:
-        return "🟢 %10 RİSK (Çok Güçlü Onaylı Kırılım)", "Mükemmel dolgun mum ve devasa hacim!"
+        return "🔥 A+ GÜÇLÜ SİNYAL", "Mükemmel dolgun mum ve devasa hacim!"
     
-    return "🟡 %25 RİSK (Standart Kırılım)", "Direnç üzeri kapanış ve yeterli hacim."
+    return "🟡 STANDART SİNYAL", "Direnç üzeri kapanış ve yeterli hacim."
 
+
+# ==========================================
+# 6. HİSSE BAZLI CANLI FİLTRELEME
+# ==========================================
 def process_symbol(symbol):
+    """
+    Tek bir hisse için fiyatı, hacmi ve kırılımı kontrol eden ana işleyici.
+    """
     try:
         ticker = yf.Ticker(symbol)
         df = ticker.history(period="1d", interval="1m")
@@ -82,47 +152,42 @@ def process_symbol(symbol):
 
         last_price = df['Close'].iloc[-1]
 
-        # Fiyat Filtresi: $0.05 - $10.00
-        if last_price >= 10.00 or last_price <= 0.05:
+        # Dinamik Fiyat Filtresi ($0.05 ile Telegram'dan ayarladığın MAX_PRICE_LIMIT arası)
+        if last_price >= MAX_PRICE_LIMIT or last_price <= 0.05:
             return
 
         last_volume = df['Volume'].iloc[-1]
-        
-        resistance = df['High'][:-1].max() 
+        resistance = df['High'][:-1].max() # Gün içi o ana kadarki en yüksek seviye (Direnç)
         avg_volume = df['Volume'][:-1].mean()
 
+        # Ölü, hacimsiz hisseleri ele
         if avg_volume < 1000:
             return
 
+        # Fiyat direnci yukarı kırdıysa analizi başlat
         if last_price > resistance:
             risk_durumu, aciklama = kirilim_analizi_yap(df, resistance, avg_volume)
             
-            # Yüksek riskli/fakeout ihtimali olanları hiç Telegram'a atma (Zararı önleme filtresi)
-            if "HIGH RISK" in risk_durumu:
+            # Sahte kırılımsa pas geç
+            if "FAKEOUT" in risk_durumu:
                 return
 
+            # Aynı hisse için 60 saniye içinde tekrar tekrar alarm atma
             if symbol not in bildirilenler or (time.time() - bildirilenler[symbol]) > 60:
                 vol_ratio = last_volume / avg_volume if avg_volume > 0 else 1.0
-                
-                # --- MİNİMUM RİSKLİ HEDEF VE SIKI STOP HESABI ---
-                target_1 = resistance * 1.04   # %4.0 Hızlı Güvenli Kâr
-                target_2 = resistance * 1.08   # %8.0 İkinci Kademe Kâr
-                
-                # Maksimum %2.0 Sıkı Stop (Minimum Zarar)
-                tight_stop = resistance * 0.98
+                tight_stop = resistance * 0.98 # Sıkı -%2 Stop-Loss seviyesi
 
                 tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
 
+                # Yalın, motivasyon odaklı ve net bildirim şablonu
                 msg = (
-                    f"⚡ **SIKI RİSK ALARMI: #{symbol}**\n\n"
-                    f"📊 **Risk Profili:** {risk_durumu}\n"
+                    f"⚡ **NASDAQ ALARMI: #{symbol}**\n\n"
+                    f"📊 **Sinyal Durumu:** {risk_durumu}\n"
                     f"📝 **Analiz:** {aciklama}\n\n"
-                    f"💵 **Giriş / Direnç:** ${resistance:.2f}\n"
-                    f"📈 **Hacim Gücü:** {vol_ratio:.1f}x katı\n\n"
-                    f"🎯 **1. Hızlı Satış (Kâr Al):** ${target_1:.2f} (+%4.0)\n"
-                    f"🚀 **2. Hedef Satış:** ${target_2:.2f} (+%8.0)\n"
-                    f"🛡️ **Sıkı Stop (Max Kayıp):** ${tight_stop:.2f} (-%2.0)\n\n"
-                    f"💡 *Strateji: Fiyat +%2 kâra geçince Stop seviyeni alış fiyatın (${resistance:.2f}) üzerine taşıyarak riskini %0'a indir!*\n\n"
+                    f"💵 **Giriş / Kırılım:** ${resistance:.2f}\n"
+                    f"📈 **Hacim Gücü:** {vol_ratio:.1f}x katı\n"
+                    f"🛡️ **Sıkı Stop:** ${tight_stop:.2f} (-%2.0)\n\n"
+                    f"🔥 **MOTİVASYON:** Obez olma !\n\n"
                     f"🔗 [TradingView'de Grafiği Aç]({tv_url})"
                 )
                 send_telegram_msg(msg)
@@ -134,7 +199,12 @@ def process_symbol(symbol):
     except Exception:
         pass
 
+
+# ==========================================
+# 7. GÜN SONU PERFORMANS RAPORU
+# ==========================================
 def gun_sonu_raporu_gonder():
+    """Gece borsa kapanışında günün sinyallerinin yaptığı max % kâr özetini sunar."""
     global gunluk_sinyaller
     if not gunluk_sinyaller:
         send_telegram_msg("📊 **GÜN SONU RAPORU:** Bugün kriterlere uyan sinyal oluşmadı.")
@@ -170,9 +240,18 @@ def gun_sonu_raporu_gonder():
     send_telegram_msg(rapor)
     gunluk_sinyaller.clear()
 
+
+# ==========================================
+# 8. ANA TARA DÖNGÜSÜ VE PARALEL İŞLEME
+# ==========================================
 def canli_kesintisiz_tarama():
+    """Tüm sembolleri paralel iş parçacıklarıyla (10 worker) anlık tarar."""
     global rapor_gonderildi_bugun
     
+    # Telegram'dan /limit gibi komut gelmiş mi kontrol et
+    check_telegram_commands()
+
+    # Borsa Kapanış Kontrolü (TSİ 23:00)
     now = datetime.datetime.utcnow() + datetime.timedelta(hours=3) # TSİ
     if now.hour == 23 and now.minute == 0:
         if not rapor_gonderildi_bugun:
@@ -185,14 +264,22 @@ def canli_kesintisiz_tarama():
     if not symbols:
         return
 
+    # 3000+ hisseyi hızlıca taramak için paralel ThreadPool
     with ThreadPoolExecutor(max_workers=10) as executor:
         executor.map(process_symbol, symbols)
 
 def start_scanner_loop():
-    send_telegram_msg("🚀 **Nasdaq Scanner Aktif!**")
+    # Sistem açılış bildirimi
+    send_telegram_msg("🚀 **Nasdaq Scanner Active**")
     while True:
         canli_kesintisiz_tarama()
 
+
+# ==========================================
+# 9. PROGRAM BAŞLATICI
+# ==========================================
 if __name__ == '__main__':
+    # Tarama döngüsünü arka planda başlat
     threading.Thread(target=start_scanner_loop, daemon=True).start()
+    # Flask sunucusunu ön planda çalıştır (Render için)
     run_flask()
