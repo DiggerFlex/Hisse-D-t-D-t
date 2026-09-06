@@ -7,7 +7,6 @@ import pandas as pd
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask
 
-# --- RENDER PORT DİNLEMESİ İÇİN WEB SUNUCUSU ---
 app = Flask(__name__)
 
 @app.route('/')
@@ -17,8 +16,7 @@ def home():
 def run_flask():
     app.run(host='0.0.0.0', port=10000)
 
-# --- TELEGRAM VE TARAMA MANTIĞI ---
-TELEGRAM_BOT_TOKEN = "8750813780:AAFCMXBLA1ZOsMUZz6vrSIJz5ccg94QMsdA"
+TELEGRAM_BOT_TOKEN = "8750813780:AAFCMXBLA1ZOsMUZz6vrSIJz5ccg94QMsdA                                               "
 TELEGRAM_CHAT_ID = "7743041008"
 
 bildirilenler = {}
@@ -27,7 +25,12 @@ rapor_gonderildi_bugun = False
 
 def send_telegram_msg(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown"}
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID, 
+        "text": message, 
+        "parse_mode": "Markdown",
+        "disable_web_page_preview": True
+    }
     try:
         requests.post(url, json=payload)
     except Exception as e:
@@ -74,9 +77,8 @@ def kirilim_analizi_yap(df, resistance, avg_volume):
             risk_pct = 15 if vol_ratio >= 3.0 else 25
             return f"🟢 %{risk_pct} RİSK (Gerçek / Onaylı Kırılım)", "Dolgun yeşil mum ve güçlü hacim onayı!"
         return "🟡 %40 RİSK (Standart Kırılım)", "Direnç üzeri kapanış mevcut."
-        
+
 def process_symbol(symbol):
-    """Her bir hisseyi paralel olarak analiz eden fonksiyon."""
     try:
         ticker = yf.Ticker(symbol)
         df = ticker.history(period="1d", interval="1m")
@@ -86,14 +88,13 @@ def process_symbol(symbol):
 
         last_price = df['Close'].iloc[-1]
 
-        # --- FİYAT ARALIĞI: $0.05 - $10.00 ---
+        # Fiyat Filtresi: $0.05 - $10.00
         if last_price >= 10.00 or last_price <= 0.05:
             return
 
         last_volume = df['Volume'].iloc[-1]
         last_low = df['Low'].iloc[-1]
         
-        # Günün başından beri görülen en yüksek direnç
         resistance = df['High'][:-1].max() 
         avg_volume = df['Volume'][:-1].mean()
 
@@ -101,20 +102,23 @@ def process_symbol(symbol):
             return
 
         if last_price > resistance:
-            # Cooldown süresi: 60 saniye (1 dakika)
             if symbol not in bildirilenler or (time.time() - bildirilenler[symbol]) > 60:
                 
                 risk_durumu, aciklama = kirilim_analizi_yap(df, resistance, avg_volume)
                 vol_ratio = last_volume / avg_volume if avg_volume > 0 else 1.0
+                
+                # TradingView Hızlı Grafik Bağlantısı
+                tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
 
                 msg = (
                     f"⚡ **CANLI NASDAQ ALARMI: #{symbol}**\n\n"
                     f"📊 **Risk Profili:** {risk_durumu}\n"
                     f"📝 **Analiz:** {aciklama}\n\n"
                     f"💵 **Anlık Fiyat:** ${last_price:.2f}\n"
-                    f"🎯 **Açılıştan Beri Zirve (Direnç):** ${resistance:.2f}\n"
+                    f"🎯 **Günün Zirvesi (Direnç):** ${resistance:.2f}\n"
                     f"📈 **Hacim Sıçraması:** {vol_ratio:.1f}x katı\n"
-                    f"🛡️ **Stop Level:** ${last_low:.2f}\n\n"
+                    f"🛡️ **Zarar Kes (Stop):** ${last_low:.2f}\n\n"
+                    f"🔗 [TradingView'de Grafiği Aç]({tv_url})\n"
                     f"⚠️ *Midas'tan mumu ve hacmi kontrol et!*"
                 )
                 send_telegram_msg(msg)
@@ -132,7 +136,7 @@ def gun_sonu_raporu_gonder():
         send_telegram_msg("📊 **GÜN SONU RAPORU:** Bugün kriterlere uyan sinyal oluşmadı.")
         return
 
-    rapor = "📊 **GÜNÜN NASDAQ PERFORMANS ÖZETİ TEBRİKLER**\n\n"
+    rapor = "📊 **GÜNÜN MİDAS / NASDAQ PERFORMANS ÖZETİ**\n\n"
     toplam_kar = 0
 
     for symbol, data in gunluk_sinyaller.items():
@@ -168,7 +172,9 @@ def gun_sonu_raporu_gonder():
 def canli_kesintisiz_tarama():
     global rapor_gonderildi_bugun
     
-    now = datetime.datetime.utcnow() + datetime.timedelta(hours=3) # TSİ (UTC+3)
+    now = datetime.datetime.utcnow() + datetime.timedelta(hours=3) # TSİ
+    
+    # Gün Sonu Raporu Kontrolü (TSİ 23:00)
     if now.hour == 23 and now.minute == 0:
         if not rapor_gonderildi_bugun:
             gun_sonu_raporu_gonder()
@@ -180,7 +186,6 @@ def canli_kesintisiz_tarama():
     if not symbols:
         return
 
-    # Hisseleri 10 paralel kanaldan aynı anda hızlıca tarar
     with ThreadPoolExecutor(max_workers=10) as executor:
         executor.map(process_symbol, symbols)
 
