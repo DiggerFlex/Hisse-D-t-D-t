@@ -190,6 +190,39 @@ def canli_kesintisiz_tarama():
 
 def start_scanner_loop():
     send_telegram_msg("🚀 **Nasdaq Scanner Aktif!**")
+    
+    # --- 5 HİSSELİ GEÇİCİ SIMÜLASYON TESTİ ---
+    test_hisseler = [
+        {"symbol": "BRNX", "price": 3.02, "res": 3.00, "vol": 3.3, "risk": "🟢 %15 RİSK (Gerçek / Onaylı Kırılım)", "desc": "Dolgun yeşil mum ve güçlü hacim onayı!"},
+        {"symbol": "SASI", "price": 1.45, "res": 1.40, "vol": 2.1, "risk": "🟡 %50 RİSK (Yavaş Hacimli Kırılım)", "desc": "Kırılım var ancak hacim desteği orta seviyede."},
+        {"symbol": "NVOS", "price": 0.85, "res": 0.82, "vol": 1.2, "risk": "🔴 %85 RİSK (Fake Kırılım Eğilimi)", "desc": "İğnesi uzun/Gövde zayıf veya hacim cılız."},
+        {"symbol": "PBTS", "price": 4.10, "res": 4.00, "vol": 4.5, "risk": "🟢 %15 RİSK (Gerçek / Onaylı Kırılım)", "desc": "Hacim patlaması ve dolgun yeşil gövde!"},
+        {"symbol": "TIRX", "price": 2.15, "res": 2.10, "vol": 1.8, "risk": "🟡 %40 RİSK (Standart Kırılım)", "desc": "Direnç üzeri kapanış mevcut."}
+    ]
+
+    for item in test_hisseler:
+        target_1 = item["res"] * 1.065
+        target_2 = item["res"] * 1.135
+        stop_price = item["res"] * 0.95
+        tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{item['symbol']}/"
+
+        msg = (
+            f"⚡ **CANLI NASDAQ ALARMI: #{item['symbol']}**\n\n"
+            f"📊 **Risk Profili:** {item['risk']}\n"
+            f"📝 **Analiz:** {item['desc']}\n\n"
+            f"💵 **Anlık Fiyat:** ${item['price']:.2f}\n"
+            f"🎯 **Giriş / Direnç:** ${item['res']:.2f}\n"
+            f"📈 **Hacim Sıçraması:** {item['vol']}x katı\n\n"
+            f"🎯 **1. Satış Kademe (Güvenli):** ${target_1:.2f} (+%6.5)\n"
+            f"🚀 **2. Satış Kademe (Açgözlü):** ${target_2:.2f} (+%13.5)\n"
+            f"🛡️ **Stop Level (Zarar Kes):** ${stop_price:.2f}\n\n"
+            f"🔗 [TradingView'de Grafiği Aç]({tv_url})\n"
+            f"⚠️ *Midas'tan mumu ve hacmi kontrol et!*"
+        )
+        send_telegram_msg(msg)
+        time.sleep(1)  # Mesajların Telegram limitine takılmaması için 1 sn ara
+    # ----------------------------------------
+
     while True:
         canli_kesintisiz_tarama()
 
