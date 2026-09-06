@@ -126,7 +126,7 @@ def canli_kesintisiz_tarama():
             is_volume_confirm = last_volume > (avg_volume * 1.5)
 
             if is_breakout and is_volume_confirm:
-                if symbol not in bildirilenler or (time.time() - bildirilenler[symbol]) > 900:
+                if symbol not in bildirilenler or (time.time() - bildirilenler[symbol]) > 60:
                     msg = (
                         f"⚡ **KESİNTİSİZ CANLI ALARM: #{symbol}**\n\n"
                         f"💵 **Anlık Fiyat:** ${last_price:.2f}\n"
