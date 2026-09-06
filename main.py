@@ -62,16 +62,11 @@ def kirilim_analizi_yap(df, resistance, avg_volume):
     
     vol_ratio = volume / avg_volume if avg_volume > 0 else 1.0
 
-    # 1. YÜKSEK RİSK (%70 - %90 Risk / Fake Kırılım Şüphesi)
     if upper_wick > body or close_p < open_p or vol_ratio < 1.5:
         risk_pct = 85 if upper_wick > (body * 2) else 70
         return f"🔴 %{risk_pct} RİSK (Fake Kırılım Eğilimi)", "İğnesi uzun/Gövde zayıf veya hacim cılız."
-
-    # 2. ORTA RİSK (%40 - %60 Risk)
     elif 1.5 <= vol_ratio < 2.2:
         return "🟡 %50 RİSK (Yavaş Hacimli Kırılım)", "Kırılım var ancak hacim desteği orta seviyede."
-
-    # 3. DÜŞÜK RİSK (%10 - %30 Risk / Onaylı Kırılım)
     else:
         if close_p > open_p and (body / candle_range) > 0.5:
             risk_pct = 15 if vol_ratio >= 3.0 else 25
@@ -107,7 +102,11 @@ def process_symbol(symbol):
                 risk_durumu, aciklama = kirilim_analizi_yap(df, resistance, avg_volume)
                 vol_ratio = last_volume / avg_volume if avg_volume > 0 else 1.0
                 
-                # TradingView Hızlı Grafik Bağlantısı
+                # --- DINAMIK HEDEF FİYAT HESAPLAMASI ---
+                target_1 = resistance * 1.065  # %6.5 Güvenli Kâr Hedefi
+                target_2 = resistance * 1.135  # %13.5 Riskli/Yüksek Kâr Hedefi
+                stop_price = min(last_low, resistance * 0.95) # Stop seviyesi
+
                 tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
 
                 msg = (
@@ -115,9 +114,11 @@ def process_symbol(symbol):
                     f"📊 **Risk Profili:** {risk_durumu}\n"
                     f"📝 **Analiz:** {aciklama}\n\n"
                     f"💵 **Anlık Fiyat:** ${last_price:.2f}\n"
-                    f"🎯 **Günün Zirvesi (Direnç):** ${resistance:.2f}\n"
-                    f"📈 **Hacim Sıçraması:** {vol_ratio:.1f}x katı\n"
-                    f"🛡️ **Zarar Kes (Stop):** ${last_low:.2f}\n\n"
+                    f"🎯 **Giriş / Direnç:** ${resistance:.2f}\n"
+                    f"📈 **Hacim Sıçraması:** {vol_ratio:.1f}x katı\n\n"
+                    f"🎯 **1. Satış Kademe (Güvenli):** ${target_1:.2f} (+%6.5)\n"
+                    f"🚀 **2. Satış Kademe (Açgözlü):** ${target_2:.2f} (+%13.5)\n"
+                    f"🛡️ **Stop Level (Zarar Kes):** ${stop_price:.2f}\n\n"
                     f"🔗 [TradingView'de Grafiği Aç]({tv_url})\n"
                     f"⚠️ *Midas'tan mumu ve hacmi kontrol et!*"
                 )
@@ -173,8 +174,6 @@ def canli_kesintisiz_tarama():
     global rapor_gonderildi_bugun
     
     now = datetime.datetime.utcnow() + datetime.timedelta(hours=3) # TSİ
-    
-    # Gün Sonu Raporu Kontrolü (TSİ 23:00)
     if now.hour == 23 and now.minute == 0:
         if not rapor_gonderildi_bugun:
             gun_sonu_raporu_gonder()
@@ -191,28 +190,6 @@ def canli_kesintisiz_tarama():
 
 def start_scanner_loop():
     send_telegram_msg("🚀 **Nasdaq Scanner Aktif!**")
-    
-    # --- GEÇİCİ TEST MESAJI (İşlevsellik Kontrolü) ---
-    test_df = pd.DataFrame([{
-        'Open': 2.30, 'High': 2.55, 'Low': 2.28, 'Close': 2.50, 'Volume': 50000
-    }])
-    risk_durumu, aciklama = kirilim_analizi_yap(test_df, resistance=2.40, avg_volume=15000)
-    tv_url = "https://www.tradingview.com/symbols/NASDAQ-AAPL/"
-    
-    test_msg = (
-        f"⚡ **CANLI NASDAQ ALARMI: #AAPL (TEST)**\n\n"
-        f"📊 **Risk Profili:** {risk_durumu}\n"
-        f"📝 **Analiz:** {aciklama}\n\n"
-        f"💵 **Anlık Fiyat:** $2.50\n"
-        f"🎯 **Günün Zirvesi (Direnç):** $2.40\n"
-        f"📈 **Hacim Sıçraması:** 3.3x katı\n"
-        f"🛡️ **Zarar Kes (Stop):** $2.28\n\n"
-        f"🔗 [TradingView'de Grafiği Aç]({tv_url})\n"
-        f"⚠️ *Midas'tan mumu ve hacmi kontrol et!*"
-    )
-    send_telegram_msg(test_msg)
-    # -----------------------------------------------
-    
     while True:
         canli_kesintisiz_tarama()
 
