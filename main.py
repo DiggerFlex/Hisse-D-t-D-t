@@ -83,7 +83,21 @@ def gun_sonu_raporu_gonder():
     gunluk_sinyaller.clear() # Gün bitti, listeyi sıfırla
 
 def canli_kesintisiz_tarama():
+    # --- GEÇİCİ TEST KODU ---
+    msg = (
+        "🧪 **TEST ALARMI: #AAPL**\n\n"
+        "💵 **Anlık Fiyat:** $2.50\n"
+        "🎯 **Kırılan Direnç:** $2.40\n"
+        "📊 **Hacim Sıçraması:** Ortalamanın 3.2x katı!\n"
+        "🛡️ **Stop Level:** $2.35\n\n"
+        "✅ *Bot ve Telegram bağlantısı sorunsuz çalışıyor!*"
+    )
+    send_telegram_msg(msg)
+    time.sleep(10)
+    # -------------------------
+
     global rapor_gonderildi_bugun
+    # ... kodun geri kalanı aynen devam eder ...
     
     # Zaman Kontrolü (TSİ 23:00'da rapor gönderimi)
     now = datetime.datetime.utcnow() + datetime.timedelta(hours=3) # TSİ (UTC+3)
