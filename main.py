@@ -16,7 +16,7 @@ def home():
 def run_flask():
     app.run(host='0.0.0.0', port=10000)
 
-TELEGRAM_BOT_TOKEN = "8750813780:AAFCMXBLA1ZOsMUZz6vrSIJz5ccg94QMsdA                                               "
+TELEGRAM_BOT_TOKEN = "8750813780:AAFCMXBLA1ZOsMUZz6vrSIJz5ccg94QMsdA"
 TELEGRAM_CHAT_ID = "7743041008"
 
 bildirilenler = {}
