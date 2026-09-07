@@ -39,7 +39,7 @@ gonderilen_haberler = set()
 rapor_gonderildi_bugun = False
 last_update_id = 0          
 
-# Tam Dikey Çizgilerden 4 Eşit Parçaya Bölünmüş Resim Linkleri
+# 4 Eşit Parçaya Bölünmüş Resim Linkleri (Kendi yükleyeceğin linklerle de değiştirebilirsin)
 IMAGE_URLS = {
     "GERCEK_1": "https://i.ibb.co/LDr0kCpx/part1.png",
     "GERCEK_2": "https://i.ibb.co/kgY1tWpY/part2.png",
@@ -66,18 +66,21 @@ def send_telegram_msg(message):
         print(f"Telegram Baglanti Hatasi: {e}")
 
 def send_telegram_side_photo(photo_url, caption):
-    """Metin mesajı ve fotoğrafı gönderir."""
-    send_telegram_msg(caption)
-    
+    """Görsel ile başlığı tek bir Telegram mesajında (Photo + Caption) gönderir."""
     url_photo = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
     payload_photo = {
         "chat_id": TELEGRAM_CHAT_ID,
-        "photo": photo_url
+        "photo": photo_url,
+        "caption": caption,
+        "parse_mode": "Markdown"
     }
     try:
-        requests.post(url_photo, json=payload_photo, timeout=10)
+        res = requests.post(url_photo, json=payload_photo, timeout=10).json()
+        if not res.get("ok"):
+            send_telegram_msg(caption)
     except Exception as e:
         print(f"Resim gonderme hatasi: {e}")
+        send_telegram_msg(caption)
 
 def check_telegram_commands():
     """Telegram komutlarını dinler (/ping, /render, /limit)."""
@@ -181,6 +184,7 @@ def detect_breakout_type(df, vol_ratio, resistance, last_price):
     c_prev2 = df['Close'].iloc[-3]
     o_prev2 = df['Open'].iloc[-3]
 
+    # Kırılım tipine göre resmi atar
     if c_prev2 > resistance and c_prev1 < o_prev1 and c_curr > o_curr:
         return "Onaylı Kırılım (Retest)", IMAGE_URLS["ONAYLI"]
 
@@ -234,7 +238,6 @@ def process_symbol(symbol):
                 tp1, tp1_pct, tp2, tp2_pct = calculate_dynamic_targets(df, last_price)
                 tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
 
-                # Boşluklar eklendi ve düzenlendi
                 msg = (
                     f"⚡ NASDAQ ALARMI: #{symbol}\n\n"
                     f"📊 Sinyal Durumu: 🟢 {kirilim_adi}\n"
