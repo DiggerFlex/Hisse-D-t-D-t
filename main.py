@@ -377,19 +377,17 @@ def canli_kesintisiz_tarama():
     with ThreadPoolExecutor(max_workers=10) as executor:
         executor.map(process_symbol, symbols)
 
-def start_scanner_loop():
-    send_telegram_msg("🚀 **Nasdaq Scanner Aktif!**")
-    
+def telegram_komut_dinleme_loop():
+    """Tarama döngüsünden bağımsız olarak Telegram komutlarını her saniye dinler"""
     while True:
         try:
-            canli_kesintisiz_tarama()
+            check_telegram_commands()
         except Exception as e:
-            print(f"Tarama döngüsü hatası: {e}")
-        
-        # Yahoo Finance ve sunucu aşırı yüklenmesini önlemek için tur aralarında 5 dakika bekleme
-        time.sleep(300)
+            print(f"Komut dinleme hatası: {e}")
+        time.sleep(2) # Her 2 saniyede bir Telegram'ı kontrol eder
 
 if __name__ == '__main__':
     threading.Thread(target=haber_tarama_loop, daemon=True).start()
     threading.Thread(target=start_scanner_loop, daemon=True).start()
+    threading.Thread(target=telegram_komut_dinleme_loop, daemon=True).start() # <-- İŞTE BU EKLENECEK
     run_flask()
