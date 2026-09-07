@@ -28,7 +28,7 @@ def run_flask():
 # ==========================================
 # 2. AYARLAR VE DİNAMİK DEĞİŞKENLER
 # ==========================================
-TELEGRAM_BOT_TOKEN = "8750813780:AAGwTUsULcuj6_X9-BE0BfPzjA3yJnvqf5E"
+TELEGRAM_BOT_TOKEN = "8750813780:AAHvWiUdKO6bzxBQHFx4GQnV9CHztjQaOH0"
 TELEGRAM_CHAT_ID = "7743041008"
 RENDER_DEPLOY_HOOK_URL = "https://api.render.com/deploy/srv-daemtan40ujc73ft425g?key=o1ghEoCwW10"
 MAX_PRICE_LIMIT = 3.50
