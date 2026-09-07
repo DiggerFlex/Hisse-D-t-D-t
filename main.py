@@ -39,7 +39,7 @@ gonderilen_haberler = set()
 rapor_gonderildi_bugun = False
 last_update_id = 0          
 
-# Alternatif ve Garantili Görsel Bağlantıları (Imgur / Alternatif CDN)
+# Görsel Bağlantıları
 IMAGE_URLS = {
     "GERCEK_1": "https://i.imgur.com/40H3720.png",
     "GERCEK_2": "https://i.imgur.com/40H3720.png",
@@ -52,7 +52,6 @@ IMAGE_URLS = {
 # 3. TELEGRAM İLETİŞİM FONKSİYONLARI
 # ==========================================
 def send_telegram_msg(message):
-    """Standart metin mesajı gönderir."""
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID, 
@@ -66,10 +65,12 @@ def send_telegram_msg(message):
         print(f"Telegram Baglanti Hatasi: {e}")
 
 def send_telegram_side_photo(photo_url, caption):
-    """Resmi indirip Telegram'a gönderir, hata olursa sadece metni atarak sistemi korur."""
     url_photo = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
     try:
-        img_response = requests.get(photo_url, timeout=15)
+        # Tarayıcı gibi görünmek için Header eklendi (Imgur engelini aşar)
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
+        img_response = requests.get(photo_url, headers=headers, timeout=15)
+        
         if img_response.status_code == 200:
             files = {'photo': ('chart.png', img_response.content)}
             payload = {
@@ -79,15 +80,16 @@ def send_telegram_side_photo(photo_url, caption):
             }
             res = requests.post(url_photo, data=payload, files=files, timeout=20).json()
             if not res.get("ok"):
+                print(f"Fotoğraf gönderilemedi, hata: {res}")
                 send_telegram_msg(caption)
         else:
+            print(f"Fotoğraf indirilemedi, HTTP Kod: {img_response.status_code}")
             send_telegram_msg(caption)
     except Exception as e:
         print(f"Resim gonderme hatasi: {e}")
         send_telegram_msg(caption)
 
 def check_telegram_commands():
-    """Telegram komutlarını dinler (/ping, /render, /limit)."""
     global MAX_PRICE_LIMIT, last_update_id
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
     
@@ -359,7 +361,6 @@ def gun_sonu_raporu_gonder():
 # 9. CANLI TARAMA VE PROGRAM BAŞLATICI
 # ==========================================
 def gorseldeki_birebir_test_mesajini_at():
-    """Test mesajını çalıştırır."""
     time.sleep(3)
     
     symbol = "TEST"
