@@ -38,6 +38,7 @@ gunluk_sinyaller = {}
 gonderilen_haberler = set() 
 rapor_gonderildi_bugun = False
 last_update_id = 0          
+is_running = True  # Botun aktif/pasif çalışma bayrağı
 
 # Kırılım Tipi ImgBB Görsel Linkleri
 IMAGE_URLS = {
@@ -87,7 +88,7 @@ def send_telegram_side_photo(photo_url, caption):
         send_telegram_msg(caption)
 
 def check_telegram_commands():
-    global MAX_PRICE_LIMIT, last_update_id
+    global MAX_PRICE_LIMIT, last_update_id, is_running
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
     
     try:
@@ -101,17 +102,34 @@ def check_telegram_commands():
                 if "message" in update and "text" in update["message"]:
                     text = update["message"]["text"].strip()
                     
-                    if text in ["/ping", "/pingms"]:
+                    if text == "/stop":
+                        if is_running:
+                            is_running = False
+                            send_telegram_msg("🔴 **Tarama durduruldu.** Bot bekleme moduna geçti.")
+                        else:
+                            send_telegram_msg("⚠️ Tarama zaten durdurulmuş durumda.")
+
+                    elif text == "/start":
+                        if not is_running:
+                            is_running = True
+                            send_telegram_msg("🟢 **Tarama yeniden başlatıldı.** Piyasa taranıyor.")
+                        else:
+                            send_telegram_msg("⚠️ Tarama zaten aktif çalışıyor.")
+
+                    elif text in ["/ping", "/pingms"]:
+                        status_str = "Aktif & Çalışıyor" if is_running else "Durduruldu (Beklemede)"
                         status_msg = (
                             f"⚡ **Sunucu Yanıt Süresi:** `{latency:.0f} ms`\n"
-                            f"🟢 **Durum:** Aktif & Çalışıyor\n"
+                            f"🟢 **Durum:** {status_str}\n"
                             f"💵 **Mevcut Limit:** ${MAX_PRICE_LIMIT:.2f}"
                         )
                         send_telegram_msg(status_msg)
 
                     elif text in ["/status", "/durum"]:
+                        status_str = "Aktif & Çalışıyor" if is_running else "Durduruldu (Beklemede)"
                         durum_msg = (
                             f"🖥️ **Bot Sistem Durumu**\n\n"
+                            f"⚙️ **Çalışma Durumu:** `{status_str}`\n"
                             f"💵 **Üst Fiyat Limiti:** `${MAX_PRICE_LIMIT:.2f}`\n"
                             f"📊 **Bugünkü Sinyal Sayısı:** `{len(gunluk_sinyaller)} adet`\n"
                             f"🌐 **Sunucu Durumu:** Sağlıklı (Render Aktif)"
@@ -130,6 +148,8 @@ def check_telegram_commands():
                     elif text in ["/help", "/yardim"]:
                         yardim_msg = (
                             "🤖 **Nasdaq Scanner Bot Komutları:**\n\n"
+                            "• `/start` - Taramayı başlatır.\n"
+                            "• `/stop` - Taramayı durdurur.\n"
                             "• `/ping` - Sunucu hızını ölçer.\n"
                             "• `/status` - Sistem durumunu gösterir.\n"
                             "• `/stats` - Güncel sinyal özetini listeler.\n"
@@ -409,7 +429,10 @@ def start_scanner_loop():
     
     while True:
         try:
-            canli_kesintisiz_tarama()
+            if is_running:
+                canli_kesintisiz_tarama()
+            else:
+                print("Tarama pasif konumda, komut bekleniyor...")
         except Exception as e:
             print(f"Tarama döngüsü hatası: {e}")
         
