@@ -28,8 +28,10 @@ def run_flask():
 # ==========================================
 TELEGRAM_BOT_TOKEN = "8750813780:AAFCMXBLA1ZOsMUZz6vrSIJz5ccg94QMsdA"
 TELEGRAM_CHAT_ID = "7743041008"
+RENDER_DEPLOY_HOOK_URL = ""  # Render Settings -> Deploy Hook URL'inizi buraya girin
 
 MAX_PRICE_LIMIT = 3.50
+START_TIME = datetime.datetime.now()
 
 bildirilenler = {}          
 gunluk_sinyaller = {}       
@@ -37,7 +39,6 @@ gonderilen_haberler = set()
 rapor_gonderildi_bugun = False
 last_update_id = 0          
 
-# Yüklediğin Tam Uyumlu 4 Parça Görsel Linki
 IMAGE_URLS = {
     "GERCEK_1": "https://i.ibb.co/jvDvD72k/Ekran-g-r-nt-s-2026-09-07-153215.png",
     "GERCEK_2": "https://i.ibb.co/PzbLMgkY/Ekran-g-r-nt-s-2026-09-07-153232.png",
@@ -64,14 +65,9 @@ def send_telegram_msg(message):
         print(f"Telegram Baglanti Hatasi: {e}")
 
 def send_telegram_side_photo(photo_url, caption):
-    """
-    1. Mesaj: Hisse detayları metni
-    2. Mesaj: Kırılım türünün fotoğrafı (Arka arkaya ayrı mesajlar)
-    """
-    # 1. Metin mesajını gönder
+    """Metin mesajı ve fotoğrafı gönderir."""
     send_telegram_msg(caption)
     
-    # 2. Fotoğrafı ayrı mesaj olarak hemen ardından gönder
     url_photo = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
     payload_photo = {
         "chat_id": TELEGRAM_CHAT_ID,
@@ -88,9 +84,9 @@ def check_telegram_commands():
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
     
     try:
-        start_req = time.time()  # İstek başlangıç zamanı
+        start_req = time.time()
         res = requests.get(url, params={"offset": last_update_id + 1, "timeout": 2}).json()
-        latency = (time.time() - start_req) * 1000  # Gecikmeyi milisaniye (ms) olarak hesapla
+        latency = (time.time() - start_req) * 1000
         
         if "result" in res:
             for update in res["result"]:
@@ -98,19 +94,16 @@ def check_telegram_commands():
                 if "message" in update and "text" in update["message"]:
                     text = update["message"]["text"].strip()
                     
-                    # /ping veya /pingms komutu geldiğinde
                     if text in ["/ping", "/pingms"]:
                         status_msg = (
-                            f"🏓 **PONG!**\n\n"
                             f"⚡ **Sunucu Yanıt Süresi:** `{latency:.0f} ms`\n"
                             f"🟢 **Durum:** Aktif & Çalışıyor\n"
                             f"💵 **Mevcut Limit:** ${MAX_PRICE_LIMIT:.2f}"
                         )
                         send_telegram_msg(status_msg)
 
-                    # /render komutu geldiğinde (Render Redeploy)
                     elif text == "/render":
-                        if "srv-" in RENDER_DEPLOY_HOOK_URL:
+                        if RENDER_DEPLOY_HOOK_URL and "srv-" in RENDER_DEPLOY_HOOK_URL:
                             send_telegram_msg("🔄 **Render Redeploy Tetiklendi!** Yeniden başlatılıyor...")
                             try:
                                 requests.post(RENDER_DEPLOY_HOOK_URL, timeout=10)
@@ -119,7 +112,6 @@ def check_telegram_commands():
                         else:
                             send_telegram_msg("⚠️ Lütfen `RENDER_DEPLOY_HOOK_URL` değişkenine Deploy Hook linkini girin.")
 
-                    # /limit komutu kontrolü
                     elif text.startswith("/limit"):
                         parts = text.split()
                         if len(parts) == 1:
@@ -136,6 +128,7 @@ def check_telegram_commands():
                                 send_telegram_msg("⚠️ Geçersiz format! Örnek kullanım: `/limit 3.5` veya `/limit 5`")
     except Exception:
         pass
+
 
 # ==========================================
 # 4. BORSADAN HİSSE LİSTESİ ÇEKME
@@ -249,7 +242,6 @@ def process_symbol(symbol):
                     f"📈 Hacim Gücü: {vol_ratio:.1f}x katı\n\n"
                     f"🎯 1. Kademe Satış (+%{tp1_pct:.1f}): ${tp1:.2f}\n"
                     f"🎯 2. Kademe Satış (+%{tp2_pct:.1f}): ${tp2:.2f}\n\n"
-                    f"🔥 MOTİVASYON: Obez olma !\n\n"
                     f"🔗 [TradingView'de Grafiği Aç]({tv_url})"
                 )
                 
@@ -366,10 +358,7 @@ def gun_sonu_raporu_gonder():
             continue
 
     ort_kar = toplam_kar / len(gunluk_sinyaller) if gunluk_sinyaller else 0
-    rapor += (
-        f"🎯 **Günlük Ortalama Max Potansiyel:** %{ort_kar:.1f}\n"
-        f"🔥 **Günün Tavsiyesi:** Disiplini koru, obez olma !"
-    )
+    rapor += f"🎯 **Günlük Ortalama Max Potansiyel:** %{ort_kar:.1f}"
     send_telegram_msg(rapor)
     gunluk_sinyaller.clear()
 
@@ -398,7 +387,6 @@ def gorseldeki_birebir_test_mesajini_at():
         f"📈 Hacim Gücü: {vol_ratio:.1f}x katı\n\n"
         f"🎯 1. Kademe Satış (+%{tp1_pct:.1f}): ${tp1:.2f}\n"
         f"🎯 2. Kademe Satış (+%{tp2_pct:.1f}): ${tp2:.2f}\n\n"
-        f"🔥 MOTİVASYON: Obez olma !\n\n"
         f"🔗 [TradingView'de Grafiği Aç]({tv_url})"
     )
     send_telegram_side_photo(IMAGE_URLS["GERCEK_1"], msg)
