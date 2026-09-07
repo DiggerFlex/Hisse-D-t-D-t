@@ -47,7 +47,7 @@ IMAGE_URLS = {
 
 
 # ==========================================
-# 3. TELEGRAM İLETİŞİM FONKSİYONLARI (FOTOĞRAFLI)
+# 3. TELEGRAM İLETİŞİM FONKSİYONLARI
 # ==========================================
 def send_telegram_msg(message):
     """Metin odaklı Telegram mesajı gönderir."""
@@ -75,7 +75,6 @@ def send_telegram_photo(photo_url, caption):
     try:
         res = requests.post(url, json=payload)
         if res.status_code != 200:
-            # Görsel çekilemezse otomatik olarak düz metin atar
             send_telegram_msg(caption)
     except Exception:
         send_telegram_msg(caption)
@@ -150,19 +149,38 @@ def calculate_dynamic_targets(df, last_price):
         return last_price * 1.07, 7.0, last_price * 1.25, 25.0
 
 def detect_breakout_type(df, vol_ratio, resistance, last_price):
-    """Görseldeki 4 senaryodan hangisinin gerçekleştiğini tespit eder."""
-    prev_close = df['Close'].iloc[-2]
-    prev_high = df['High'].iloc[-2]
-    prev_low = df['Low'].iloc[-2]
+    """
+    Ekrandaki 4 kırılım yapısını ayrı ayrı analiz eder ve ilgili resmi seçer:
+    1. Onaylı Kırılım (Retest Yapısı)
+    2. Gerçek Kırılım 1 (Doğrudan Dikine Yeşil Mumlar)
+    3. Gerçek Kırılım 2 (Kırmızı Düzeltme Mumu/Fitil Sonrası Yükseliş)
+    4. Yavaş Hacimli Kırılım (Direnç Üstünde Küçük Kırmızı Konsolidasyon Sonrası Patlama)
+    """
+    c_curr = df['Close'].iloc[-1]
+    o_curr = df['Open'].iloc[-1]
     
-    if prev_high > resistance and last_price >= resistance:
+    c_prev1 = df['Close'].iloc[-2]
+    o_prev1 = df['Open'].iloc[-2]
+    l_prev1 = df['Low'].iloc[-2]
+    
+    c_prev2 = df['Close'].iloc[-3]
+    o_prev2 = df['Open'].iloc[-3]
+
+    # Senaryo 1: Onaylı Kırılım (Retest) - Önceki mum direnci kırdı, sonraki kırmızı pullback attı, şu anki mum destekten fırlıyor
+    if c_prev2 > resistance and c_prev1 < o_prev1 and c_curr > o_curr:
         return "Onaylı Kırılım (Retest)", IMAGE_URLS["ONAYLI"]
-    elif 2.0 <= vol_ratio < 2.8:
+
+    # Senaryo 3: Gerçek Kırılım 2 - Kırılım sonrası 1 tane kırmızı dinlenme mumu atıp ardından patlayan yapı
+    elif c_prev1 < o_prev1 and c_curr > o_curr and l_prev1 <= resistance:
+        return "Gerçek Kırılım (Fitilli/Düzeltmeli)", IMAGE_URLS["GERCEK_2"]
+
+    # Senaryo 4: Yavaş Hacimli Kırılım - Direnç üzerinde yatay küçük kırmızı mumlar sonrası hacim patlaması
+    elif 1.8 <= vol_ratio < 2.5 and c_curr > o_curr:
         return "Yavaş Hacimli Kırılım", IMAGE_URLS["YAVAS_HACIM"]
-    elif vol_ratio >= 2.8 and (df['Open'].iloc[-1] < prev_low or df['Low'].iloc[-1] < prev_close):
-        return "Gerçek Kırılım 2 (İğneli)", IMAGE_URLS["GERCEK_2"]
+
+    # Senaryo 2: Gerçek Kırılım 1 - Doğrudan üst üste güçlü yeşil mumlar ile kırılım
     else:
-        return "Gerçek Kırılım 1 (Güçlü)", IMAGE_URLS["GERCEK_1"]
+        return "Gerçek Kırılım (Güçlü Dikine)", IMAGE_URLS["GERCEK_1"]
 
 
 # ==========================================
@@ -195,7 +213,7 @@ def process_symbol(symbol):
 
         if last_price <= resistance and distance_to_resistance <= 0.015 and last_price > open_price:
             
-            if vol_ratio >= 2.0:
+            if vol_ratio >= 1.8:
                 kirilim_adi, img_url = detect_breakout_type(df, vol_ratio, resistance, last_price)
             else:
                 return
@@ -340,34 +358,8 @@ def gun_sonu_raporu_gonder():
 
 
 # ==========================================
-# 9. CANLI TARAMA VE PROGRAM BAŞLATICI (FOTOĞRAFLI TEST)
+# 9. CANLI TARAMA VE PROGRAM BAŞLATICI
 # ==========================================
-def gorseldeki_birebir_test_mesajini_at():
-    """Fotoğraflı mesaj sistemini test eder."""
-    time.sleep(3)
-    
-    symbol = "CISO"
-    last_price = 1.70
-    tight_stop = 1.67
-    vol_ratio = 2.9
-    tp1, tp1_pct = 1.84, 8.5
-    tp2, tp2_pct = 2.25, 32.4
-    tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
-    
-    msg = (
-        f"⚡ NASDAQ ALARMI: #{symbol}\n\n"
-        f"📊 Sinyal Durumu: 🟢 Gerçek Kırılım 1 (Güçlü)\n"
-        f"📝 Analiz: Direnç kırıldı, kırılım türü fotoğraftaki yapı ile eşleşiyor.\n\n"
-        f"💵 Giriş / Kırılım: ${last_price:.2f}\n"
-        f"🛡️ Stop (-%2.0): ${tight_stop:.2f}\n"
-        f"📈 Hacim Gücü: {vol_ratio:.1f}x katı\n\n"
-        f"🎯 1. Kademe Satış (+%{tp1_pct:.1f}): ${tp1:.2f}\n"
-        f"🎯 2. Kademe Satış (+%{tp2_pct:.1f}): ${tp2:.2f}\n\n"
-        f"🔥 MOTİVASYON: Obez olma !\n\n"
-        f"🔗 [TradingView'de Grafiği Aç]({tv_url})"
-    )
-    send_telegram_photo(IMAGE_URLS["GERCEK_1"], msg)
-
 def canli_kesintisiz_tarama():
     global rapor_gonderildi_bugun
     
@@ -390,8 +382,6 @@ def canli_kesintisiz_tarama():
 
 def start_scanner_loop():
     send_telegram_msg("🚀 **Nasdaq Scanner Aktif!**")
-    threading.Thread(target=gorseldeki_birebir_test_mesajini_at, daemon=True).start()
-    
     while True:
         canli_kesintisiz_tarama()
 
