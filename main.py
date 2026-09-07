@@ -28,7 +28,7 @@ def run_flask():
 # ==========================================
 TELEGRAM_BOT_TOKEN = "8750813780:AAFCMXBLA1ZOsMUZz6vrSIJz5ccg94QMsdA"
 TELEGRAM_CHAT_ID = "7743041008"
-RENDER_DEPLOY_HOOK_URL = ""  # Render Settings -> Deploy Hook URL'ini buraya yapıştırabilirsin
+RENDER_DEPLOY_HOOK_URL = "https://api.render.com/deploy/srv-daemtan40ujc73ft425g?key=o1ghEoCwW10"
 
 MAX_PRICE_LIMIT = 3.50
 START_TIME = datetime.datetime.now()
