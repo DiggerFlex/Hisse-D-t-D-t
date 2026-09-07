@@ -64,11 +64,11 @@ def send_telegram_msg(message):
         print(f"Telegram Baglanti Hatasi: {e}")
 
 def send_telegram_photo(photo_url, caption):
-    """Görsel ve altına açıklama metni ekleyerek Telegram mesajı gönderir."""
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+    """Görseli dosya biçiminde göndererek Telegram'ın kırpmasını engeller."""
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendDocument"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
-        "photo": photo_url,
+        "document": photo_url,
         "caption": caption,
         "parse_mode": "Markdown"
     }
@@ -78,7 +78,7 @@ def send_telegram_photo(photo_url, caption):
             send_telegram_msg(caption)
     except Exception:
         send_telegram_msg(caption)
-
+        
 def check_telegram_commands():
     """Telegram'dan gelen /limit komutlarını anlık dinler."""
     global MAX_PRICE_LIMIT, last_update_id
