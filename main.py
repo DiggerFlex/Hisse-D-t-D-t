@@ -47,10 +47,10 @@ IMAGE_URLS = {
 
 
 # ==========================================
-# 3. TELEGRAM İLETİŞİM FONKSİYONLARI
+# 3. TELEGRAM İLETİŞİM FONKSİYONLARI (SAĞ TARAFTA SAĞDA ÖNİZLEME)
 # ==========================================
 def send_telegram_msg(message):
-    """Metin odaklı Telegram mesajı gönderir."""
+    """Standart metin mesajı gönderir."""
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID, 
@@ -63,22 +63,27 @@ def send_telegram_msg(message):
     except Exception as e:
         print(f"Telegram Baglanti Hatasi: {e}")
 
-def send_telegram_photo(photo_url, caption):
-    """Görseli dosya biçiminde göndererek Telegram'ın kırpmasını engeller."""
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendDocument"
+def send_telegram_side_photo(photo_url, caption):
+    """
+    Görseli mesajın üstüne koymak yerine sağ tarafa küçük önizleme
+    olarak yerleştiren özel fonksiyon.
+    """
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    
+    # Metnin görünmeyen bir yerine gizli resim bağlantısı eklenir
+    message_with_preview = f"[\u200b]({photo_url})" + caption
+    
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
-        "document": photo_url,
-        "caption": caption,
-        "parse_mode": "Markdown"
+        "text": message_with_preview,
+        "parse_mode": "Markdown",
+        "disable_web_page_preview": False
     }
     try:
-        res = requests.post(url, json=payload)
-        if res.status_code != 200:
-            send_telegram_msg(caption)
+        requests.post(url, json=payload)
     except Exception:
         send_telegram_msg(caption)
-        
+
 def check_telegram_commands():
     """Telegram'dan gelen /limit komutlarını anlık dinler."""
     global MAX_PRICE_LIMIT, last_update_id
@@ -149,13 +154,6 @@ def calculate_dynamic_targets(df, last_price):
         return last_price * 1.07, 7.0, last_price * 1.25, 25.0
 
 def detect_breakout_type(df, vol_ratio, resistance, last_price):
-    """
-    Ekrandaki 4 kırılım yapısını ayrı ayrı analiz eder ve ilgili resmi seçer:
-    1. Onaylı Kırılım (Retest Yapısı)
-    2. Gerçek Kırılım 1 (Doğrudan Dikine Yeşil Mumlar)
-    3. Gerçek Kırılım 2 (Kırmızı Düzeltme Mumu/Fitil Sonrası Yükseliş)
-    4. Yavaş Hacimli Kırılım (Direnç Üstünde Küçük Kırmızı Konsolidasyon Sonrası Patlama)
-    """
     c_curr = df['Close'].iloc[-1]
     o_curr = df['Open'].iloc[-1]
     
@@ -166,19 +164,15 @@ def detect_breakout_type(df, vol_ratio, resistance, last_price):
     c_prev2 = df['Close'].iloc[-3]
     o_prev2 = df['Open'].iloc[-3]
 
-    # Senaryo 1: Onaylı Kırılım (Retest) - Önceki mum direnci kırdı, sonraki kırmızı pullback attı, şu anki mum destekten fırlıyor
     if c_prev2 > resistance and c_prev1 < o_prev1 and c_curr > o_curr:
         return "Onaylı Kırılım (Retest)", IMAGE_URLS["ONAYLI"]
 
-    # Senaryo 3: Gerçek Kırılım 2 - Kırılım sonrası 1 tane kırmızı dinlenme mumu atıp ardından patlayan yapı
     elif c_prev1 < o_prev1 and c_curr > o_curr and l_prev1 <= resistance:
         return "Gerçek Kırılım (Fitilli/Düzeltmeli)", IMAGE_URLS["GERCEK_2"]
 
-    # Senaryo 4: Yavaş Hacimli Kırılım - Direnç üzerinde yatay küçük kırmızı mumlar sonrası hacim patlaması
     elif 1.8 <= vol_ratio < 2.5 and c_curr > o_curr:
         return "Yavaş Hacimli Kırılım", IMAGE_URLS["YAVAS_HACIM"]
 
-    # Senaryo 2: Gerçek Kırılım 1 - Doğrudan üst üste güçlü yeşil mumlar ile kırılım
     else:
         return "Gerçek Kırılım (Güçlü Dikine)", IMAGE_URLS["GERCEK_1"]
 
@@ -236,7 +230,8 @@ def process_symbol(symbol):
                     f"🔗 [TradingView'de Grafiği Aç]({tv_url})"
                 )
                 
-                send_telegram_photo(img_url, msg)
+                # Resmi sağ kenara küçük önizleme olarak koyar
+                send_telegram_side_photo(img_url, msg)
                 bildirilenler[symbol] = time.time()
                 
                 if symbol not in gunluk_sinyaller:
@@ -358,31 +353,12 @@ def gun_sonu_raporu_gonder():
 
 
 # ==========================================
-# 9. CANLI TARAMA VE PROGRAM BAŞLATICI
+# 9. CANLI TARAMA VE PROGRAM BAŞLATICI (FOTOĞRAFLI TEST)
 # ==========================================
-def canli_kesintisiz_tarama():
-    global rapor_gonderildi_bugun
-    
-    check_telegram_commands()
-
-    now = datetime.datetime.utcnow() + datetime.timedelta(hours=3)
-    if now.hour == 23 and now.minute == 0:
-        if not rapor_gonderildi_bugun:
-            gun_sonu_raporu_gonder()
-            rapor_gonderildi_bugun = True
-    elif now.hour == 0:
-        rapor_gonderildi_bugun = False
-
-    symbols = get_penny_stocks()
-    if not symbols:
-        return
-
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        executor.map(process_symbol, symbols)
-
 def gorseldeki_birebir_test_mesajini_at():
-    """Fotoğraflı mesaj sistemini test eder."""
+    """Sağ taraf resim önizlemesini test eder."""
     time.sleep(3)
+    
     symbol = "TEST"
     last_price = 1.70
     tight_stop = 1.67
@@ -403,11 +379,30 @@ def gorseldeki_birebir_test_mesajini_at():
         f"🔥 MOTİVASYON: Obez olma !\n\n"
         f"🔗 [TradingView'de Grafiği Aç]({tv_url})"
     )
-    send_telegram_photo(IMAGE_URLS["GERCEK_1"], msg)
+    send_telegram_side_photo(IMAGE_URLS["GERCEK_1"], msg)
+
+def canli_kesintisiz_tarama():
+    global rapor_gonderildi_bugun
+    
+    check_telegram_commands()
+
+    now = datetime.datetime.utcnow() + datetime.timedelta(hours=3)
+    if now.hour == 23 and now.minute == 0:
+        if not rapor_gonderildi_bugun:
+            gun_sonu_raporu_gonder()
+            rapor_gonderildi_bugun = True
+    elif now.hour == 0:
+        rapor_gonderildi_bugun = False
+
+    symbols = get_penny_stocks()
+    if not symbols:
+        return
+
+    with ThreadPoolExecutor(max_workers=10) as executor:
+        executor.map(process_symbol, symbols)
 
 def start_scanner_loop():
     send_telegram_msg("🚀 **Nasdaq Scanner Aktif!**")
-    # Test mesajını tetikler
     threading.Thread(target=gorseldeki_birebir_test_mesajini_at, daemon=True).start()
     
     while True:
