@@ -37,12 +37,12 @@ gonderilen_haberler = set()
 rapor_gonderildi_bugun = False
 last_update_id = 0          
 
-# Kırılım tiplerine ait çalışan direkt resim URL'leri
+# ImgBB Doğrudan Resim Bağlantıları (.png / .jpg uzantılı)
 IMAGE_URLS = {
-    "GERCEK_1": "https://raw.githubusercontent.com/telegram/tdlib/master/docs/images/telegram_logo.png", # Kendi resim URL'niz (.jpg/.png ile bitmeli)
-    "GERCEK_2": "https://raw.githubusercontent.com/telegram/tdlib/master/docs/images/telegram_logo.png",
-    "YAVAS_HACIM": "https://raw.githubusercontent.com/telegram/tdlib/master/docs/images/telegram_logo.png",
-    "ONAYLI": "https://raw.githubusercontent.com/telegram/tdlib/master/docs/images/telegram_logo.png"
+    "GERCEK_1": "https://i.ibb.co/PZgZgBnG/gercek1.png",
+    "GERCEK_2": "https://i.ibb.co/k6r7JXZy/gercek2.png",
+    "YAVAS_HACIM": "https://i.ibb.co/6cyBNdyb/yavas.png",
+    "ONAYLI": "https://i.ibb.co/6cVBJZbB/onayli.png"
 }
 
 
@@ -75,7 +75,7 @@ def send_telegram_photo(photo_url, caption):
     try:
         res = requests.post(url, json=payload)
         if res.status_code != 200:
-            # Görsel gönderilemezse yedek olarak sadece metin gönderir
+            # Görsel çekilemezse otomatik olarak düz metin atar
             send_telegram_msg(caption)
     except Exception:
         send_telegram_msg(caption)
@@ -150,28 +150,19 @@ def calculate_dynamic_targets(df, last_price):
         return last_price * 1.07, 7.0, last_price * 1.25, 25.0
 
 def detect_breakout_type(df, vol_ratio, resistance, last_price):
-    """
-    Görseldeki 4 senaryodan hangisinin gerçekleştiğini tespit eder.
-    """
+    """Görseldeki 4 senaryodan hangisinin gerçekleştiğini tespit eder."""
     prev_close = df['Close'].iloc[-2]
     prev_high = df['High'].iloc[-2]
     prev_low = df['Low'].iloc[-2]
     
-    # 1. Onaylı Kırılım (Retest): Önceki mum direnci kırdı, şu anki mum dirence temas edip tepki veriyor
     if prev_high > resistance and last_price >= resistance:
         return "Onaylı Kırılım (Retest)", IMAGE_URLS["ONAYLI"]
-        
-    # 2. Yavaş Hacimli Kırılım: Hacim katı düşük (2.0x - 2.8x arası) ama yükseliş var
     elif 2.0 <= vol_ratio < 2.8:
         return "Yavaş Hacimli Kırılım", IMAGE_URLS["YAVAS_HACIM"]
-        
-    # 3. Gerçek Kırılım 2 (Fitilli/Aşağı İğneli Kırılım): Mum altında iğne bırakıp toparlamış
     elif vol_ratio >= 2.8 and (df['Open'].iloc[-1] < prev_low or df['Low'].iloc[-1] < prev_close):
-        return "Gerçek Kırılım (İğneli)", IMAGE_URLS["GERCEK_2"]
-        
-    # 4. Gerçek Kırılım 1 (Doğrudan Güçlü Hacimli Kırılım)
+        return "Gerçek Kırılım 2 (İğneli)", IMAGE_URLS["GERCEK_2"]
     else:
-        return "Gerçek Kırılım (Güçlü)", IMAGE_URLS["GERCEK_1"]
+        return "Gerçek Kırılım 1 (Güçlü)", IMAGE_URLS["GERCEK_1"]
 
 
 # ==========================================
@@ -227,7 +218,6 @@ def process_symbol(symbol):
                     f"🔗 [TradingView'de Grafiği Aç]({tv_url})"
                 )
                 
-                # Görsel ile birlikte mesaj gönderimi
                 send_telegram_photo(img_url, msg)
                 bildirilenler[symbol] = time.time()
                 
@@ -366,7 +356,7 @@ def gorseldeki_birebir_test_mesajini_at():
     
     msg = (
         f"⚡ NASDAQ ALARMI: #{symbol}\n\n"
-        f"📊 Sinyal Durumu: 🟢 Gerçek Kırılım (Güçlü)\n"
+        f"📊 Sinyal Durumu: 🟢 Gerçek Kırılım 1 (Güçlü)\n"
         f"📝 Analiz: Direnç kırıldı, kırılım türü fotoğraftaki yapı ile eşleşiyor.\n\n"
         f"💵 Giriş / Kırılım: ${last_price:.2f}\n"
         f"🛡️ Stop (-%2.0): ${tight_stop:.2f}\n"
