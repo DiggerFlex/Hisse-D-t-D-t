@@ -467,7 +467,7 @@ def canli_kesintisiz_tarama():
 
 def start_scanner_loop():
     welcome_msg = (
-        "🦅 *NASDAQ ALGO TERMINAL ONLINE* 🦅\n"
+        "🦅 *NASDAQ SCANNER TERMINAL ONLINE* 🦅\n"
         "━━━━━━━━━━━━━━━━━━━━━\n\n"
         "⚡ *Tarama Motoru:* `Aktif (1m Canlı Veri)`\n"
         "🎯 *Fiyat Limiti:* `$3.50 ve Altı`\n"
