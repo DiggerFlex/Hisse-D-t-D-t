@@ -47,7 +47,7 @@ IMAGE_URLS = {
 
 
 # ==========================================
-# 3. TELEGRAM İLETİŞİM FONKSİYONLARI (SENDPHOTO İLE FOTOĞRAFLI MESAJ)
+# 3. TELEGRAM İLETİŞİM FONKSİYONLARI (AR ARDA İKİ AYRI MESAJ)
 # ==========================================
 def send_telegram_msg(message):
     """Standart metin mesajı gönderir."""
@@ -65,22 +65,22 @@ def send_telegram_msg(message):
 
 def send_telegram_side_photo(photo_url, caption):
     """
-    Fotoğrafı sendPhoto metoduyla doğrudan Telegram medya mesajı
-    olarak (altında metniyle) gönderir.
+    Önce hisse analiz metnini gönderir, 
+    hemen ardından kırılım görselini ayrı mesaj olarak gönderir.
     """
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
-    payload = {
+    # 1. MESAJ: Metin mesajını at
+    send_telegram_msg(caption)
+    
+    # 2. MESAJ: Görseli hemen arkasından ayrı bir mesaj olarak at
+    url_photo = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+    payload_photo = {
         "chat_id": TELEGRAM_CHAT_ID,
-        "photo": photo_url,
-        "caption": caption,
-        "parse_mode": "Markdown"
+        "photo": photo_url
     }
     try:
-        res = requests.post(url, json=payload)
-        if res.status_code != 200:
-            send_telegram_msg(caption)
-    except Exception:
-        send_telegram_msg(caption)
+        requests.post(url_photo, json=payload_photo)
+    except Exception as e:
+        print(f"Resim gonderme hatasi: {e}")
 
 def check_telegram_commands():
     """Telegram'dan gelen /limit komutlarını anlık dinler."""
@@ -218,7 +218,7 @@ def process_symbol(symbol):
                 msg = (
                     f"⚡ NASDAQ ALARMI: #{symbol}\n\n"
                     f"📊 Sinyal Durumu: 🟢 {kirilim_adi}\n"
-                    f"📝 Analiz: Kırılım yapısı tespit edildi, grafik eşleşti.\n\n"
+                    f"📝 Analiz: Direnç kırıldı, kırılım türü fotoğraftaki yapı ile eşleşiyor.\n\n"
                     f"💵 Giriş / Kırılım: ${last_price:.2f}\n"
                     f"🛡️ Stop (-%2.0): ${tight_stop:.2f}\n"
                     f"📈 Hacim Gücü: {vol_ratio:.1f}x katı\n\n"
@@ -353,7 +353,7 @@ def gun_sonu_raporu_gonder():
 # 9. CANLI TARAMA VE PROGRAM BAŞLATICI
 # ==========================================
 def gorseldeki_birebir_test_mesajini_at():
-    """Fotoğraflı mesaj gönderimini test eder."""
+    """Art arda iki mesaj (Metin + Fotoğraf) gönderimini test eder."""
     time.sleep(3)
     
     symbol = "TEST"
