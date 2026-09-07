@@ -125,7 +125,7 @@ def check_telegram_commands():
                     elif text == "/start":
                         if not is_running:
                             is_running = True
-                                send_telegram_msg("🟢 *BOT DEVREDE*\n_Motorlar çalıştırıldı. Piyasa taranıyor..._")
+                            send_telegram_msg("🟢 *BOT DEVREDE*\n_Motorlar çalıştırıldı. Piyasa taranıyor..._")
                         else:
                             send_telegram_msg("⚠️ _Tarama zaten aktif olarak çalışıyor._")
 
@@ -346,7 +346,6 @@ def process_symbol(symbol):
 # ==========================================
 def kritik_piyasa_etkisi_analiz_et(metin):
     metin_lower = metin.lower()
-    olumlu_kelimeler = ["cut tariffs", "tax cut", "trade deal", "peace", "agreement", "support", "boost", "surge"]
     olumsuz_kelimeler = ["war", "strike", "attack", "sanction", "tariff", "tariffs", "threat", "china", "russia", "ban"]
 
     if any(word in metin_lower for word in olumsuz_kelimeler):
@@ -406,7 +405,7 @@ def haber_tarama_loop():
 def gun_sonu_raporu_gonder():
     global gunluk_sinyaller
     if not gunluk_sinyaller:
-        send_telegram_msg("📊 **GÜNÜN İŞLEMLERİ**\n\n`Bugün henüz sinyal oluşmadı.`")
+        send_telegram_msg("PARA KAZANMA SANATI\n📊 **GÜNÜN İŞLEMLERİ** 📊\n\n`Bugün henüz sinyal oluşmadı.`")
         return
 
     rapor = "PARA KAZANMA SANATI\n📊 **GÜNÜN İŞLEMLERİ** 📊\n"
@@ -425,7 +424,6 @@ def gun_sonu_raporu_gonder():
             toplam_kar += kar_pct
             basarili_sayisi += 1
 
-            # Kâr büyüklüğüne göre dinamik emojiler
             if kar_pct >= 30:
                 emoji = "🚀🔥"
             elif kar_pct >= 20:
@@ -444,6 +442,7 @@ def gun_sonu_raporu_gonder():
     
     send_telegram_msg(rapor)
     gunluk_sinyaller.clear()
+
 
 # ==========================================
 # 9. CANLI TARAMA VE PROGRAM BAŞLATICI
