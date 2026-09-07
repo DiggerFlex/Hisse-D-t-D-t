@@ -25,18 +25,16 @@ def run_flask():
 # ==========================================
 # 2. AYARLAR VE DİNAMİK DEĞİŞKENLER
 # ==========================================
-# Telegram API Bilgilerin
 TELEGRAM_BOT_TOKEN = "8750813780:AAFCMXBLA1ZOsMUZz6vrSIJz5ccg94QMsdA"
 TELEGRAM_CHAT_ID = "7743041008"
 
-# Telegram /limit komutuyla anlık değiştirilebilir fiyat limiti (Varsayılan: $3.50)
 MAX_PRICE_LIMIT = 3.50
 
-bildirilenler = {}          # Hisselere sürekli üst üste alarm atmamak için zaman kaydı
-gunluk_sinyaller = {}       # Gün sonu performans raporu için sinyal kaydı
-gonderilen_haberler = set() # Tekrar haber atmamak için haber hafızası
+bildirilenler = {}          
+gunluk_sinyaller = {}       
+gonderilen_haberler = set() 
 rapor_gonderildi_bugun = False
-last_update_id = 0          # Telegram komut takibi için mesaj kimliği
+last_update_id = 0          
 
 
 # ==========================================
@@ -93,7 +91,6 @@ def check_telegram_commands():
 # 4. BORSADAN HİSSE LİSTESİ ÇEKME
 # ==========================================
 def get_penny_stocks():
-    """NASDAQ FTP sunucusundan tüm aktif listelenmiş hisse sembollerini çeker."""
     try:
         url = "ftp://ftp.nasdaqtrader.com/SymbolDirectory/nasdaqlisted.txt"
         df = pd.read_csv(url, sep="|")
@@ -105,10 +102,9 @@ def get_penny_stocks():
 
 
 # ==========================================
-# 5. HİSSE BAZLI CANLI FİLTRELEME & ERKEN ALARM (KIRILIM ÖNCESİ)
+# 5. HİSSE BAZLI CANLI FİLTRELEME & ALARM
 # ==========================================
 def process_symbol(symbol):
-    """Fiyat henüz direnci kırmadan, dirence dayandığı ve hacim patladığı an alarm atar."""
     try:
         ticker = yf.Ticker(symbol)
         df = ticker.history(period="1d", interval="1m")
@@ -118,55 +114,49 @@ def process_symbol(symbol):
 
         last_price = df['Close'].iloc[-1]
 
-        # Dinamik Fiyat Filtresi ($0.05 ile MAX_PRICE_LIMIT arası)
         if last_price >= MAX_PRICE_LIMIT or last_price <= 0.05:
             return
 
         last_volume = df['Volume'].iloc[-1]
         open_price = df['Open'].iloc[-1]
         
-        # Son mum hariç günün en yüksek fiyatı (Direnç)
         resistance = df['High'][:-1].max()
         avg_volume = df['Volume'][:-1].mean()
 
         if avg_volume < 1000:
             return
 
-        # --- KIRILIM ÖNCESİ (PRE-BREAKOUT) MANTIGI ---
         distance_to_resistance = (resistance - last_price) / resistance if resistance > 0 else 1.0
         vol_ratio = last_volume / avg_volume if avg_volume > 0 else 1.0
 
         if last_price <= resistance and distance_to_resistance <= 0.015 and last_price > open_price:
             
-            # Hacim gücüne göre sinyal derecelendirme
             if vol_ratio >= 3.0:
                 risk_durumu = "🔥 Patlama Yakın"
                 aciklama = "Fiyat dirence dayandı, devasa hacimle direnci zorluyor!"
             elif vol_ratio >= 2.0:
-                risk_durumu = "🟡 Kırılım Hazırlığı"
-                aciklama = "Direncin hemen altında, hacim artışı var."
+                risk_durumu = "🟡 Normal Kırılım"
+                aciklama = "Direnç kırıldı, takip edilebilir."
             else:
-                return  # Hacimsiz yaklaşmaları ele
+                return
 
             if symbol not in bildirilenler or (time.time() - bildirilenler[symbol]) > 60:
-                # Stop seviyesi: İzin verilen en yüksek değer olan tam %2.0 kayıp sınırı
                 tight_stop = last_price * 0.98   
-                tp1 = resistance * 1.05          # Direnç kırıldıktan sonraki +%5
-                tp2 = resistance * 1.10          # Direnç kırıldıktan sonraki +%10
+                tp1 = last_price * 1.05          
+                tp2 = last_price * 1.10          
 
                 tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
 
                 msg = (
-                    f"⚡ **NASDAQ ERKEN ALARM: #{symbol}**\n\n"
-                    f"📊 **Sinyal Durumu:** {risk_durumu}\n"
-                    f"📝 **Analiz:** {aciklama}\n\n"
-                    f"💵 **Anlık Fiyat:** ${last_price:.2f}\n"
-                    f"🎯 **Test Edilen Direnç:** ${resistance:.2f}\n"
-                    f"🛡️ **Stop (-%2.0 Maksimum):** ${tight_stop:.2f}\n"
-                    f"📈 **Hacim Gücü:** {vol_ratio:.1f}x katı\n\n"
-                    f"🎯 **1. Kademe Satış (+%5.0):** ${tp1:.2f}\n"
-                    f"🎯 **2. Kademe Satış (+%10.0):** ${tp2:.2f}\n\n"
-                    f"🔥 **MOTİVASYON:** Obez olma !\n\n"
+                    f"⚡ NASDAQ ALARMI: #{symbol}\n\n"
+                    f"📊 Sinyal Durumu: {risk_durumu}\n"
+                    f"📝 Analiz: {aciklama}\n\n"
+                    f"💵 Giriş / Kırılım: ${last_price:.2f}\n"
+                    f"🛡️ Stop (-%2.0): ${tight_stop:.2f}\n"
+                    f"📈 Hacim Gücü: {vol_ratio:.1f}x katı\n\n"
+                    f"🎯 1. Kademe Satış (+%5.0): ${tp1:.2f}\n"
+                    f"🎯 2. Kademe Satış (+%10.0): ${tp2:.2f}\n\n"
+                    f"🔥 MOTİVASYON: Obez olma !\n\n"
                     f"🔗 [TradingView'de Grafiği Aç]({tv_url})"
                 )
                 send_telegram_msg(msg)
@@ -180,20 +170,13 @@ def process_symbol(symbol):
 
 
 # ==========================================
-# 6. TRUMP KRİZ VE ŞOK AÇIKLAMA MODÜLÜ (SAAT BAŞI FİLTRELİ)
+# 6. TRUMP VE HABER MODÜLÜ
 # ==========================================
 def kritik_piyasa_etkisi_analiz_et(metin):
-    """Haber başlığını analiz eder ve sadece Türkçe net yön bilgisi döndürür."""
     metin_lower = metin.lower()
     
-    olumlu_kelimeler = [
-        "cut tariffs", "tax cut", "trade deal", "peace", "agreement", 
-        "support", "boost", "surge", "deregulation", "growth"
-    ]
-    olumsuz_kelimeler = [
-        "war", "strike", "attack", "sanction", "tariff", "tariffs", 
-        "threat", "china", "russia", "ban", "military", "missile", "crisis"
-    ]
+    olumlu_kelimeler = ["cut tariffs", "tax cut", "trade deal", "peace", "agreement", "support", "boost", "surge", "deregulation", "growth"]
+    olumsuz_kelimeler = ["war", "strike", "attack", "sanction", "tariff", "tariffs", "threat", "china", "russia", "ban", "military", "missile", "crisis"]
 
     olumlu_puan = sum(1 for word in olumlu_kelimeler if word in metin_lower)
     olumsuz_puan = sum(1 for word in olumsuz_kelimeler if word in metin_lower)
@@ -206,15 +189,9 @@ def kritik_piyasa_etkisi_analiz_et(metin):
         return "⚠️ **NASDAQ Etkisi: Riskli**"
 
 def trump_ve_piyasa_haberleri_kontrol_et():
-    """Saat başlarında çalışır; sadece son 60 dakikadaki KRİTİK kriz haberlerini atar."""
     global gonderilen_haberler
-    
     rss_url = "https://news.google.com/rss/search?q=Trump+(war+OR+tariff+OR+sanction+OR+attack+OR+China+OR+strike)&hl=en-US&gl=US&ceid=US:en"
-    
-    kritik_kelimeler = [
-        "war", "tariff", "tariffs", "sanction", "attack", "strike", 
-        "china", "russia", "military", "missile", "threat", "ban", "trade war"
-    ]
+    kritik_kelimeler = ["war", "tariff", "tariffs", "sanction", "attack", "strike", "china", "russia", "military", "missile", "threat", "ban", "trade war"]
     
     try:
         feed = feedparser.parse(rss_url)
@@ -256,7 +233,6 @@ def trump_ve_piyasa_haberleri_kontrol_et():
         print(f"Haber akisi hatasi: {e}")
 
 def haber_tarama_loop():
-    """Haber kontrolünü saat başlarında (her 3600 saniyede bir) çalıştırır."""
     while True:
         trump_ve_piyasa_haberleri_kontrol_et()
         time.sleep(3600)
@@ -271,7 +247,7 @@ def gun_sonu_raporu_gonder():
         send_telegram_msg("📊 **GÜN SONU RAPORU:** Bugün kriterlere uyan kırılmalar oluşmadı.")
         return
 
-    rapor = "📊 **GÜNÜN Hisse PERFORMANS ÖZETİ**\n\n"
+    rapor = "📊 **GÜNÜN HİSSE PERFORMANS ÖZETİ**\n\n"
     toplam_kar = 0
 
     for symbol, data in gunluk_sinyaller.items():
@@ -312,8 +288,34 @@ def gun_sonu_raporu_gonder():
 
 
 # ==========================================
-# 8. CANLI TARAMA VE PROGRAM BAŞLATICI
+# 8. CANLI TARAMA VE PROGRAM BAŞLATICI (TEST MESAJI DAHİL)
 # ==========================================
+def gorseldeki_birebir_test_mesajini_at():
+    """Ekran görüntüsündeki tasarımı birebir atan test fonksiyonu."""
+    time.sleep(3) # Bot çalıştıktan 3 sn sonra tetiklenir
+    
+    symbol = "CISO"
+    last_price = 1.70
+    tight_stop = 1.67
+    vol_ratio = 2.9
+    tp1 = 1.78
+    tp2 = 1.87
+    tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
+    
+    msg = (
+        f"⚡ NASDAQ ALARMI: #{symbol}\n\n"
+        f"📊 Sinyal Durumu: 🟡 Normal Kırılım\n"
+        f"📝 Analiz: Direnç kırıldı, takip edilebilir.\n\n"
+        f"💵 Giriş / Kırılım: ${last_price:.2f}\n"
+        f"🛡️ Stop (-%2.0): ${tight_stop:.2f}\n"
+        f"📈 Hacim Gücü: {vol_ratio:.1f}x katı\n\n"
+        f"🎯 1. Kademe Satış (+%5.0): ${tp1:.2f}\n"
+        f"🎯 2. Kademe Satış (+%10.0): ${tp2:.2f}\n\n"
+        f"🔥 MOTİVASYON: Obez olma !\n\n"
+        f"🔗 [TradingView'de Grafiği Aç]({tv_url})"
+    )
+    send_telegram_msg(msg)
+
 def canli_kesintisiz_tarama():
     global rapor_gonderildi_bugun
     
@@ -336,15 +338,14 @@ def canli_kesintisiz_tarama():
 
 def start_scanner_loop():
     send_telegram_msg("🚀 **Nasdaq Scanner Aktif!**")
+    
+    # Görseldeki test mesajını tetikler
+    threading.Thread(target=gorseldeki_birebir_test_mesajini_at, daemon=True).start()
+    
     while True:
         canli_kesintisiz_tarama()
 
 if __name__ == '__main__':
-    # Haber takip sistemini saat başlarında çalışacak şekilde başlatır
     threading.Thread(target=haber_tarama_loop, daemon=True).start()
-    
-    # Canlı hisse tarama sistemini kesintisiz başlatır
     threading.Thread(target=start_scanner_loop, daemon=True).start()
-    
-    # Render uyanık tutma sunucusu
     run_flask()
