@@ -1,6 +1,7 @@
 flask
 requests
+feedparser
 yfinance
-mplfinance
 pandas
-matplotlib
+numpy
+python-dateutil
