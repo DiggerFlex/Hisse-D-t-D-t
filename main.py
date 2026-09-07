@@ -399,12 +399,13 @@ def canli_kesintisiz_tarama():
     with ThreadPoolExecutor(max_workers=10) as executor:
         executor.map(process_symbol, symbols)
 
+# KODUNUN EN ALTINDAKİ ESKİ KISIM (Bunu silip yerine aşağıdakini atacaksın):
 def start_scanner_loop():
     send_telegram_msg("🚀 **Nasdaq Scanner Aktif!**")
     threading.Thread(target=gorseldeki_birebir_test_mesajini_at, daemon=True).start()
     
     while True:
-        canli_kesintisiz_tarama() # <--- Hiç durmadan binlerce hisseyi tarar!
+        canli_kesintisiz_tarama()
 
 if __name__ == '__main__':
     threading.Thread(target=haber_tarama_loop, daemon=True).start()
