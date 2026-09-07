@@ -39,12 +39,12 @@ gonderilen_haberler = set()
 rapor_gonderildi_bugun = False
 last_update_id = 0          
 
-# 4 Eşit Parçaya Bölünmüş Resim Linkleri (Kendi yükleyeceğin linklerle de değiştirebilirsin)
+# Alternatif ve Garantili Görsel Bağlantıları (Imgur / Alternatif CDN)
 IMAGE_URLS = {
-    "GERCEK_1": "https://i.ibb.co/LDr0kCpx/part1.png",
-    "GERCEK_2": "https://i.ibb.co/kgY1tWpY/part2.png",
-    "YAVAS_HACIM": "https://i.ibb.co/3ykG8LwH/part3.png",
-    "ONAYLI": "https://i.ibb.co/3y26p48q/part4.png"
+    "GERCEK_1": "https://i.imgur.com/40H3720.png",
+    "GERCEK_2": "https://i.imgur.com/40H3720.png",
+    "YAVAS_HACIM": "https://i.imgur.com/40H3720.png",
+    "ONAYLI": "https://i.imgur.com/40H3720.png"
 }
 
 
@@ -66,17 +66,21 @@ def send_telegram_msg(message):
         print(f"Telegram Baglanti Hatasi: {e}")
 
 def send_telegram_side_photo(photo_url, caption):
-    """Görsel ile başlığı tek bir Telegram mesajında (Photo + Caption) gönderir."""
+    """Resmi indirip Telegram'a gönderir, hata olursa sadece metni atarak sistemi korur."""
     url_photo = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
-    payload_photo = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "photo": photo_url,
-        "caption": caption,
-        "parse_mode": "Markdown"
-    }
     try:
-        res = requests.post(url_photo, json=payload_photo, timeout=10).json()
-        if not res.get("ok"):
+        img_response = requests.get(photo_url, timeout=15)
+        if img_response.status_code == 200:
+            files = {'photo': ('chart.png', img_response.content)}
+            payload = {
+                "chat_id": TELEGRAM_CHAT_ID,
+                "caption": caption,
+                "parse_mode": "Markdown"
+            }
+            res = requests.post(url_photo, data=payload, files=files, timeout=20).json()
+            if not res.get("ok"):
+                send_telegram_msg(caption)
+        else:
             send_telegram_msg(caption)
     except Exception as e:
         print(f"Resim gonderme hatasi: {e}")
@@ -107,14 +111,14 @@ def check_telegram_commands():
                         send_telegram_msg(status_msg)
 
                     elif text == "/render":
-                        if RENDER_DEPLOY_HOOK_URL and "srv-" in RENDER_DEPLOY_HOOK_URL:
+                        if RENDER_DEPLOY_HOOK_URL:
                             send_telegram_msg("🔄 **Render Redeploy Tetiklendi!** Yeniden başlatılıyor...")
                             try:
                                 requests.post(RENDER_DEPLOY_HOOK_URL, timeout=10)
                             except Exception as e:
                                 send_telegram_msg(f"⚠️ Render tetikleme hatası: {e}")
                         else:
-                            send_telegram_msg("⚠️ Lütfen `RENDER_DEPLOY_HOOK_URL` değişkenine Deploy Hook linkini girin.")
+                            send_telegram_msg("⚠️ Render Deploy Hook URL tanımlı değil.")
 
                     elif text.startswith("/limit"):
                         parts = text.split()
@@ -125,11 +129,11 @@ def check_telegram_commands():
                                 new_limit = float(parts[1])
                                 if 0.1 <= new_limit <= 20.0:
                                     MAX_PRICE_LIMIT = new_limit
-                                    send_telegram_msg(f"✅ **Fiyat limiti başarıyla güncellendi:** ${MAX_PRICE_LIMIT:.2f}")
+                                    send_telegram_msg(f"✅ **Fiyat limiti güncellendi:** ${MAX_PRICE_LIMIT:.2f}")
                                 else:
                                     send_telegram_msg("⚠️ Lütfen $0.10 ile $20.00 arasında bir değer girin.")
                             except ValueError:
-                                send_telegram_msg("⚠️ Geçersiz format! Örnek kullanım: `/limit 3.5` veya `/limit 5`")
+                                send_telegram_msg("⚠️ Geçersiz format! Örnek: `/limit 3.5`")
     except Exception:
         pass
 
@@ -184,16 +188,12 @@ def detect_breakout_type(df, vol_ratio, resistance, last_price):
     c_prev2 = df['Close'].iloc[-3]
     o_prev2 = df['Open'].iloc[-3]
 
-    # Kırılım tipine göre resmi atar
     if c_prev2 > resistance and c_prev1 < o_prev1 and c_curr > o_curr:
         return "Onaylı Kırılım (Retest)", IMAGE_URLS["ONAYLI"]
-
     elif c_prev1 < o_prev1 and c_curr > o_curr and l_prev1 <= resistance:
         return "Gerçek Kırılım (Fitilli/Düzeltmeli)", IMAGE_URLS["GERCEK_2"]
-
     elif 1.8 <= vol_ratio < 2.5 and c_curr > o_curr:
         return "Yavaş Hacimli Kırılım", IMAGE_URLS["YAVAS_HACIM"]
-
     else:
         return "Gerçek Kırılım (Güçlü Dikine)", IMAGE_URLS["GERCEK_1"]
 
@@ -227,7 +227,6 @@ def process_symbol(symbol):
         vol_ratio = last_volume / avg_volume if avg_volume > 0 else 1.0
 
         if last_price <= resistance and distance_to_resistance <= 0.015 and last_price > open_price:
-            
             if vol_ratio >= 1.8:
                 kirilim_adi, img_url = detect_breakout_type(df, vol_ratio, resistance, last_price)
             else:
@@ -255,7 +254,6 @@ def process_symbol(symbol):
                 
                 if symbol not in gunluk_sinyaller:
                     gunluk_sinyaller[symbol] = {'entry': last_price}
-
     except Exception:
         pass
 
@@ -265,15 +263,12 @@ def process_symbol(symbol):
 # ==========================================
 def kritik_piyasa_etkisi_analiz_et(metin):
     metin_lower = metin.lower()
-    olumlu_kelimeler = ["cut tariffs", "tax cut", "trade deal", "peace", "agreement", "support", "boost", "surge", "deregulation", "growth"]
-    olumsuz_kelimeler = ["war", "strike", "attack", "sanction", "tariff", "tariffs", "threat", "china", "russia", "ban", "military", "missile", "crisis"]
+    olumlu_kelimeler = ["cut tariffs", "tax cut", "trade deal", "peace", "agreement", "support", "boost", "surge"]
+    olumsuz_kelimeler = ["war", "strike", "attack", "sanction", "tariff", "tariffs", "threat", "china", "russia", "ban"]
 
-    olumlu_puan = sum(1 for word in olumlu_kelimeler if word in metin_lower)
-    olumsuz_puan = sum(1 for word in olumsuz_kelimeler if word in metin_lower)
-
-    if olumsuz_puan > 0:
+    if any(word in metin_lower for word in olumsuz_kelimeler):
         return "🚨 **NASDAQ Etkisi: Olumsuz**"
-    elif olumlu_puan > 0:
+    elif any(word in metin_lower for word in olumlu_kelimeler):
         return "🚀 **NASDAQ Etkisi: Olumlu**"
     else:
         return "⚠️ **NASDAQ Etkisi: Riskli**"
@@ -281,7 +276,7 @@ def kritik_piyasa_etkisi_analiz_et(metin):
 def trump_ve_piyasa_haberleri_kontrol_et():
     global gonderilen_haberler
     rss_url = "https://news.google.com/rss/search?q=Trump+(war+OR+tariff+OR+sanction+OR+attack+OR+China+OR+strike)&hl=en-US&gl=US&ceid=US:en"
-    kritik_kelimeler = ["war", "tariff", "tariffs", "sanction", "attack", "strike", "china", "russia", "military", "missile", "threat", "ban", "trade war"]
+    kritik_kelimeler = ["war", "tariff", "tariffs", "sanction", "attack", "strike", "china", "russia", "military", "missile", "threat", "ban"]
     
     try:
         feed = feedparser.parse(rss_url)
@@ -299,9 +294,7 @@ def trump_ve_piyasa_haberleri_kontrol_et():
                     pub_time = parser.parse(entry.published)
                     if pub_time.tzinfo is None:
                         pub_time = pub_time.replace(tzinfo=datetime.timezone.utc)
-                    
-                    zaman_farki_dakika = (now_utc - pub_time).total_seconds() / 60.0
-                    if zaman_farki_dakika > 60:
+                    if (now_utc - pub_time).total_seconds() / 60.0 > 60:
                         gonderilen_haberler.add(haber_id)
                         continue
                 except Exception:
@@ -309,10 +302,8 @@ def trump_ve_piyasa_haberleri_kontrol_et():
 
             if any(word in baslik_lower for word in kritik_kelimeler):
                 etki = kritik_piyasa_etkisi_analiz_et(entry.title)
-                haber_mesaji = f"⚠️ **Trump Açıklama** ⚠️\n\n{etki}"
-                send_telegram_msg(haber_mesaji)
+                send_telegram_msg(f"⚠️ **Trump Açıklama** ⚠️\n\n{etki}")
                 gonderilen_haberler.add(haber_id)
-                
     except Exception as e:
         print(f"Haber akisi hatasi: {e}")
 
@@ -346,17 +337,13 @@ def gun_sonu_raporu_gonder():
             max_kar = ((zirve - entry) / entry) * 100
             kapanis_kar = ((kapanis - entry) / entry) * 100
             
-            if zirve <= entry:
-                durum_str = "🛡️ **-%2.0 Stop Oldu**"
-            else:
-                durum_str = f"🚀 **%{max_kar:.1f} Max Kâr**"
-
+            durum_str = f"🛡️ **-%2.0 Stop Oldu**" if zirve <= entry else f"🚀 **%{max_kar:.1f} Max Kâr**"
             toplam_kar += max_kar
 
             rapor += (
                 f"🔹 **#{symbol}**\n"
-                f"  • Kırılım / Giriş: ${entry:.2f}\n"
-                f"  • Gün İçi Zirve: ${zirve:.2f} ({durum_str})\n"
+                f"  • Giriş: ${entry:.2f}\n"
+                f"  • Zirve: ${zirve:.2f} ({durum_str})\n"
                 f"  • Kapanış: ${kapanis:.2f} (%{kapanis_kar:.1f})\n\n"
             )
         except Exception:
@@ -398,7 +385,6 @@ def gorseldeki_birebir_test_mesajini_at():
 
 def canli_kesintisiz_tarama():
     global rapor_gonderildi_bugun
-    
     check_telegram_commands()
 
     now = datetime.datetime.utcnow() + datetime.timedelta(hours=3)
