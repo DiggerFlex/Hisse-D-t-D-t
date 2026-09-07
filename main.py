@@ -386,8 +386,17 @@ def telegram_komut_dinleme_loop():
             print(f"Komut dinleme hatası: {e}")
         time.sleep(2) # Her 2 saniyede bir Telegram'ı kontrol eder
 
+def telegram_komut_dinleme_loop():
+    """Tarama döngüsünden bağımsız olarak Telegram komutlarını sürekli dinler"""
+    while True:
+        try:
+            check_telegram_commands()
+        except Exception as e:
+            print(f"Komut dinleme hatası: {e}")
+        time.sleep(2)  # Her 2 saniyede bir komutları kontrol eder
+
 if __name__ == '__main__':
     threading.Thread(target=haber_tarama_loop, daemon=True).start()
     threading.Thread(target=start_scanner_loop, daemon=True).start()
-    threading.Thread(target=telegram_komut_dinleme_loop, daemon=True).start() # <-- İŞTE BU EKLENECEK
+    threading.Thread(target=telegram_komut_dinleme_loop, daemon=True).start()
     run_flask()
