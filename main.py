@@ -170,42 +170,40 @@ def check_telegram_commands():
                         send_telegram_msg(yardim_msg)
 
                     elif text == "/render":
-                        if RENDER_DEPLOY_HOOK_URL:
-                            init_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-                            init_res = requests.post(init_url, json={
-                                "chat_id": TELEGRAM_CHAT_ID,
-                                "text": "🔄 **RENDER BOOTSTRAP INITIATED**\n`[░░░░░░░░░░] %0`",
-                                "parse_mode": "Markdown"
-                            }).json()
-                            
-                            msg_id = init_res.get("result", {}).get("message_id")
-                            
-                            try:
-                                requests.post(RENDER_DEPLOY_HOOK_URL, timeout=10)
-                                progress_steps = [
-                                    (10, "▓░░░░░░░░░", "Render isteği doğrulandı..."),
-                                    (20, "▓▓░░░░░░░░", "Sunucu çekirdeği hazırlanıyor..."),
-                                    (30, "▓▓▓░░░░░░░", "Bağımlılıklar taranıyor..."),
-                                    (40, "▓▓▓▓░░░░░░", "Gerekli kütüphaneler kuruluyor..."),
-                                    (50, "▓▓▓▓▓░░░░░", "Para kazanma algoritması aktif... 💵"),
-                                    (60, "▓▓▓▓▓▓░░░░", "NASDAQ veri akışına bağlanıyor..."),
-                                    (70, "▓▓▓▓▓▓▓░░░", "Filtreler optimize ediliyor..."),
-                                    (80, "▓▓▓▓▓▓▓▓░░", "Güvenlik protokolleri doğrulandı..."),
-                                    (90, "▓▓▓▓▓▓▓▓▓░", "Canlı tarama servisi ayağa kalkıyor..."),
-                                    (100, "▓▓▓▓▓▓▓▓▓▓", "DEPLOYMENT SUCCESSFUL! 🚀")
-                                ]
-                                for pct, bar, status_text in progress_steps:
-                                    time.sleep(1.5)
-                                    if msg_id:
-                                        edit_telegram_msg(
-                                            msg_id, 
-                                            f"🔄 **RENDER REBOOT IN PROGRESS**\n`[{bar}] %{pct}`\n📌 *{status_text}*"
-                                        )
-                            except Exception as e:
-                                if msg_id:
-                                    edit_telegram_msg(msg_id, f"⚠️ **Render Bağlantı Hatası:** {e}")
-                        else:
-                            send_telegram_msg("⚠️ Deploy Hook URL eksik.")
+    if RENDER_DEPLOY_HOOK_URL:
+        # 1. Mesajı başlat
+        init_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+        init_res = requests.post(init_url, json={
+            "chat_id": TELEGRAM_CHAT_ID,
+            "text": "🌀 *Sistem Yeniden Başlatılıyor...*",
+            "parse_mode": "Markdown"
+        }).json()
+        
+        msg_id = init_res.get("result", {}).get("message_id")
+        
+        try:
+            requests.post(RENDER_DEPLOY_HOOK_URL, timeout=10)
+            
+            # Canlı Akıcı Yazı Animasyonu
+            animasyon_kareleri = [
+                "🔄 *Render Baglantisi Kuruluyor* ⏳",
+                "🔄 *Render Baglantisi Kuruluyor..* ⏳\n\n📡 *Sunucu yanıtı bekleniyor...*",
+                "⚙️ *Sistem Çekirdeği Yükleniyor...*\n\n[▓░░░░░░░░░] *%10* — _Bağlantı doğrulandı_",
+                "⚙️ *Sistem Çekirdeği Yükleniyor...*\n\n[▓▓▓░░░░░░░] *%30* — _Kütüphaneler hazırlanıyor_",
+                "🔥 *Algo Motoru Aktifleştiriliyor...*\n\n[▓▓▓▓▓░░░░░] *%50* — _Para kazanma modu devrede_ 💵",
+                "📊 *NASDAQ Veri Akışı Bağlanıyor...*\n\n[▓▓▓▓▓▓▓░░░] *%70* — _Fiyat filtreleri yükleniyor_",
+                "🛡️ *Güvenlik Kontrolleri...*\n\n[▓▓▓▓▓▓▓▓▓░] *%90* — _Canlı tarama başlatılıyor_",
+                "🚀 *İŞLEM TAMAMLANDI!*\n\n[▓▓▓▓▓▓▓▓▓▓] *%100*\n\n✨ *Nasdaq Scanner Canlı Modda Çalışıyor!*"
+            ]
+            
+            for kare in animasyon_kareleri:
+                time.sleep(1.2) # Her karede mesaj güncellenir (Animasyon hissi)
+                if msg_id:
+                    edit_telegram_msg(msg_id, kare)
+
+        except Exception as e:
+            if msg_id:
+                edit_telegram_msg(msg_id, f"⚠️ *Hata Oluştu:* {e}")
 
                     elif text.startswith("/limit"):
                         parts = text.split()
