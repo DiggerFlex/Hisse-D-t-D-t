@@ -110,6 +110,40 @@ def check_telegram_commands():
                         )
                         send_telegram_msg(status_msg)
 
+                    elif text in ["/status", "/durum"]:
+                        calisma_suresi = datetime.datetime.now() - START_TIME
+                        saat, remainder = divmod(int(calisma_suresi.total_seconds()), 3600)
+                        dakika, _ = divmod(remainder, 60)
+                        
+                        durum_msg = (
+                            f"🖥️ **Bot Sistem Durumu**\n\n"
+                            f"⏱️ **Çalışma Süresi:** `{saat} saat {dakika} dakika`\n"
+                            f"💵 **Üst Fiyat Limiti:** `${MAX_PRICE_LIMIT:.2f}`\n"
+                            f"📊 **Bugünkü Sinyal Sayısı:** `{len(gunluk_sinyaller)} adet`\n"
+                            f"🌐 **Sunucu Durumu:** Sağlıklı (Render Aktif)"
+                        )
+                        send_telegram_msg(durum_msg)
+
+                    elif text in ["/stats", "/ozet"]:
+                        if not gunluk_sinyaller:
+                            send_telegram_msg("📊 **Anlık Özet:** Bugün henüz sinyal üretilmedi.")
+                        else:
+                            ozet_msg = f"📊 **Anlık Sinyal Listesi ({len(gunluk_sinyaller)} adet):**\n\n"
+                            for sym in gunluk_sinyaller.keys():
+                                ozet_msg += f"• `#{sym}` (Giriş: ${gunluk_sinyaller[sym]['entry']:.2f})\n"
+                            send_telegram_msg(ozet_msg)
+
+                    elif text in ["/help", "/yardim"]:
+                        yardim_msg = (
+                            "🤖 **Nasdaq Scanner Bot Komutları:**\n\n"
+                            "• `/ping` veya `/pingms` - Sunucu hızını ölçer.\n"
+                            "• `/status` veya `/durum` - Detaylı sistem durumunu gösterir.\n"
+                            "• `/stats` veya `/ozet` - Güncel sinyal özetini listeler.\n"
+                            "• `/limit [değer]` - Fiyat limitini değiştirir (Örn: `/limit 4.0`)\n"
+                            "• `/render` - Botu Render üzerinde yeniden başlatır."
+                        )
+                        send_telegram_msg(yardim_msg)
+
                     elif text == "/render":
                         if RENDER_DEPLOY_HOOK_URL:
                             send_telegram_msg("🔄 **Render Tetiklendi!** Yeniden başlatılıyor...")
