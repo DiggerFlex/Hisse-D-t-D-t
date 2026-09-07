@@ -37,12 +37,12 @@ gonderilen_haberler = set()
 rapor_gonderildi_bugun = False
 last_update_id = 0          
 
-# Kırılım tiplerine ait temsilî görsel URL'leri (Kendi resim URL'lerin ile değiştirebilirsin)
+# Kırılım tiplerine ait çalışan direkt resim URL'leri
 IMAGE_URLS = {
-    "GERCEK_1": "https://i.imgur.com/8Q9Z3v1.png",      # Gerçek Kırılım (Güçlü Yeşil Mum)
-    "GERCEK_2": "https://i.imgur.com/5X2A7y8.png",      # Gerçek Kırılım (Fitilli/Geri Çekilmeli)
-    "YAVAS_HACIM": "https://i.imgur.com/2N1M9p0.png",   # Yavaş Hacimli Kırılım
-    "ONAYLI": "https://i.imgur.com/9K4L7w2.png"        # Onaylı Kırılım (Retest)
+    "GERCEK_1": "https://raw.githubusercontent.com/telegram/tdlib/master/docs/images/telegram_logo.png", # Kendi resim URL'niz (.jpg/.png ile bitmeli)
+    "GERCEK_2": "https://raw.githubusercontent.com/telegram/tdlib/master/docs/images/telegram_logo.png",
+    "YAVAS_HACIM": "https://raw.githubusercontent.com/telegram/tdlib/master/docs/images/telegram_logo.png",
+    "ONAYLI": "https://raw.githubusercontent.com/telegram/tdlib/master/docs/images/telegram_logo.png"
 }
 
 
