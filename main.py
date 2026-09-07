@@ -45,41 +45,28 @@ IMAGE_URLS = {
     "ONAYLI": "https://i.ibb.co/6cVBJZbB/onayli.png"
 }
 
+
 # ==========================================
-# TELEGRAM İLETİŞİM FONKSİYONU (SAĞ TARAFTA KÜÇÜK ÖNİZLEME)
+# 3. TELEGRAM İLETİŞİM FONKSİYONLARI (SAĞ TARAFTA KÜÇÜK ÖNİZLEME)
 # ==========================================
-def send_telegram_side_photo(photo_url, caption):
-    """
-    Görseli alta büyük koymak yerine sağ tarafa küçük önizleme 
-    (thumbnail) olarak yerleştirir.
-    """
+def send_telegram_msg(message):
+    """Standart metin mesajı gönderir."""
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    
-    # Metnin başına gizli link yerleştirilir
-    message_with_preview = f"[\u200b]({photo_url})" + caption
-    
     payload = {
-        "chat_id": TELEGRAM_CHAT_ID,
-        "text": message_with_preview,
+        "chat_id": TELEGRAM_CHAT_ID, 
+        "text": message, 
         "parse_mode": "Markdown",
-        "link_preview_options": {
-            "is_disabled": False,
-            "url": photo_url,
-            "prefer_small_media": True,     # Resmi sağ tarafa küçük kare yapar
-            "show_above_text": False        # Metnin altında kalmasını engeller
-        }
+        "disable_web_page_preview": True
     }
     try:
-        res = requests.post(url, json=payload)
-        if res.status_code != 200:
-            send_telegram_msg(caption)
-    except Exception:
-        send_telegram_msg(caption)
+        requests.post(url, json=payload)
+    except Exception as e:
+        print(f"Telegram Baglanti Hatasi: {e}")
 
 def send_telegram_side_photo(photo_url, caption):
     """
-    Görseli mesajın üstüne koymak yerine sağ tarafa küçük önizleme
-    olarak yerleştiren özel fonksiyon.
+    Görseli alt tarafa büyük yaymak yerine sağ tarafa küçük 
+    ve kırpılmayan bir önizleme (thumbnail) olarak yerleştirir.
     """
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     
@@ -90,10 +77,17 @@ def send_telegram_side_photo(photo_url, caption):
         "chat_id": TELEGRAM_CHAT_ID,
         "text": message_with_preview,
         "parse_mode": "Markdown",
-        "disable_web_page_preview": False
+        "link_preview_options": {
+            "is_disabled": False,
+            "url": photo_url,
+            "prefer_small_media": True,
+            "show_above_text": False
+        }
     }
     try:
-        requests.post(url, json=payload)
+        res = requests.post(url, json=payload)
+        if res.status_code != 200:
+            send_telegram_msg(caption)
     except Exception:
         send_telegram_msg(caption)
 
@@ -243,7 +237,6 @@ def process_symbol(symbol):
                     f"🔗 [TradingView'de Grafiği Aç]({tv_url})"
                 )
                 
-                # Resmi sağ kenara küçük önizleme olarak koyar
                 send_telegram_side_photo(img_url, msg)
                 bildirilenler[symbol] = time.time()
                 
@@ -366,7 +359,7 @@ def gun_sonu_raporu_gonder():
 
 
 # ==========================================
-# 9. CANLI TARAMA VE PROGRAM BAŞLATICI (FOTOĞRAFLI TEST)
+# 9. CANLI TARAMA VE PROGRAM BAŞLATICI
 # ==========================================
 def gorseldeki_birebir_test_mesajini_at():
     """Sağ taraf resim önizlemesini test eder."""
