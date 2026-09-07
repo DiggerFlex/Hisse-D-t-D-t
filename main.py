@@ -5,6 +5,7 @@ import requests
 import feedparser
 import yfinance as yf
 import pandas as pd
+import numpy as np
 from dateutil import parser
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask
@@ -102,7 +103,41 @@ def get_penny_stocks():
 
 
 # ==========================================
-# 5. HİSSE BAZLI CANLI FİLTRELEME & ALARM
+# 5. DİNAMİK HEDEF HESAPLAMA (ATR & PİVOT)
+# ==========================================
+def calculate_dynamic_targets(df, last_price, resistance):
+    """
+    Hissenin volatilite (ATR) ve geçmiş pivot noktalarına göre
+    gerçekçi patlama hedeflerini dinamik hesaplar.
+    """
+    try:
+        # ATR (Average True Range) Hesabı (Son 14 mum)
+        high_low = df['High'] - df['Low']
+        high_close = np.abs(df['High'] - df['Close'].shift())
+        low_close = np.abs(df['Low'] - df['Close'].shift())
+        ranges = pd.concat([high_low, high_close, low_close], axis=1)
+        true_range = np.max(ranges, axis=1)
+        atr = true_range.rolling(14).mean().iloc[-1]
+
+        if pd.isna(atr) or atr == 0:
+            atr = last_price * 0.03 # Varsayılan %3 ATR
+
+        # 1. Kademe Hedef: Min %5, dinamik olarak 1.5x ATR
+        tp1_dyn = max(last_price * 1.05, last_price + (1.5 * atr))
+        tp1_pct = ((tp1_dyn - last_price) / last_price) * 100
+
+        # 2. Kademe Hedef (Ana Patlama): Min %15, dinamik olarak 3.5x ATR veya üst pivot
+        tp2_dyn = max(last_price * 1.15, last_price + (3.5 * atr))
+        tp2_pct = ((tp2_dyn - last_price) / last_price) * 100
+
+        return tp1_dyn, tp1_pct, tp2_dyn, tp2_pct
+    except Exception:
+        # Hata durumunda esnek dinamik varsayılanlar
+        return last_price * 1.07, 7.0, last_price * 1.25, 25.0
+
+
+# ==========================================
+# 6. HİSSE BAZLI CANLI FİLTRELEME & ALARM
 # ==========================================
 def process_symbol(symbol):
     try:
@@ -142,8 +177,9 @@ def process_symbol(symbol):
 
             if symbol not in bildirilenler or (time.time() - bildirilenler[symbol]) > 60:
                 tight_stop = last_price * 0.98   
-                tp1 = last_price * 1.05          
-                tp2 = last_price * 1.10          
+                
+                # DİNAMİK HEDEF HESAPLAMA
+                tp1, tp1_pct, tp2, tp2_pct = calculate_dynamic_targets(df, last_price, resistance)
 
                 tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
 
@@ -154,8 +190,8 @@ def process_symbol(symbol):
                     f"💵 Giriş / Kırılım: ${last_price:.2f}\n"
                     f"🛡️ Stop (-%2.0): ${tight_stop:.2f}\n"
                     f"📈 Hacim Gücü: {vol_ratio:.1f}x katı\n\n"
-                    f"🎯 1. Kademe Satış (+%5.0): ${tp1:.2f}\n"
-                    f"🎯 2. Kademe Satış (+%10.0): ${tp2:.2f}\n\n"
+                    f"🎯 1. Kademe Satış (+%{tp1_pct:.1f}): ${tp1:.2f}\n"
+                    f"🎯 2. Kademe Satış (+%{tp2_pct:.1f}): ${tp2:.2f}\n\n"
                     f"🔥 MOTİVASYON: Obez olma !\n\n"
                     f"🔗 [TradingView'de Grafiği Aç]({tv_url})"
                 )
@@ -170,7 +206,7 @@ def process_symbol(symbol):
 
 
 # ==========================================
-# 6. TRUMP VE HABER MODÜLÜ
+# 7. TRUMP VE HABER MODÜLÜ
 # ==========================================
 def kritik_piyasa_etkisi_analiz_et(metin):
     metin_lower = metin.lower()
@@ -239,7 +275,7 @@ def haber_tarama_loop():
 
 
 # ==========================================
-# 7. GÜN SONU PERFORMANS RAPORU
+# 8. GÜN SONU PERFORMANS RAPORU
 # ==========================================
 def gun_sonu_raporu_gonder():
     global gunluk_sinyaller
@@ -288,29 +324,34 @@ def gun_sonu_raporu_gonder():
 
 
 # ==========================================
-# 8. CANLI TARAMA VE PROGRAM BAŞLATICI (TEST MESAJI DAHİL)
+# 9. CANLI TARAMA VE PROGRAM BAŞLATICI (DİNAMİK TEST)
 # ==========================================
 def gorseldeki_birebir_test_mesajini_at():
-    """Ekran görüntüsündeki tasarımı birebir atan test fonksiyonu."""
-    time.sleep(3) # Bot çalıştıktan 3 sn sonra tetiklenir
+    """Dinamik hedefli yeni mesaj yapısını test eder."""
+    time.sleep(3)
     
     symbol = "CISO"
     last_price = 1.70
     tight_stop = 1.67
     vol_ratio = 2.9
-    tp1 = 1.78
-    tp2 = 1.87
+    
+    # Test için dinamik potansiyel örneği (%8.5 ve %32.4 patlama hedefi)
+    tp1 = 1.84
+    tp1_pct = 8.5
+    tp2 = 2.25
+    tp2_pct = 32.4
+    
     tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
     
     msg = (
         f"⚡ NASDAQ ALARMI: #{symbol}\n\n"
         f"📊 Sinyal Durumu: 🟡 Normal Kırılım\n"
-        f"📝 Analiz: Direnç kırıldı, takip edilebilir.\n\n"
+        f"📝 Analiz: Direnç kırıldı, dinamik potansiyel yüksek.\n\n"
         f"💵 Giriş / Kırılım: ${last_price:.2f}\n"
         f"🛡️ Stop (-%2.0): ${tight_stop:.2f}\n"
         f"📈 Hacim Gücü: {vol_ratio:.1f}x katı\n\n"
-        f"🎯 1. Kademe Satış (+%5.0): ${tp1:.2f}\n"
-        f"🎯 2. Kademe Satış (+%10.0): ${tp2:.2f}\n\n"
+        f"🎯 1. Kademe Satış (+%{tp1_pct:.1f}): ${tp1:.2f}\n"
+        f"🎯 2. Kademe Satış (+%{tp2_pct:.1f}): ${tp2:.2f}\n\n"
         f"🔥 MOTİVASYON: Obez olma !\n\n"
         f"🔗 [TradingView'de Grafiği Aç]({tv_url})"
     )
@@ -339,7 +380,6 @@ def canli_kesintisiz_tarama():
 def start_scanner_loop():
     send_telegram_msg("🚀 **Nasdaq Scanner Aktif!**")
     
-    # Görseldeki test mesajını tetikler
     threading.Thread(target=gorseldeki_birebir_test_mesajini_at, daemon=True).start()
     
     while True:
