@@ -380,8 +380,36 @@ def canli_kesintisiz_tarama():
     with ThreadPoolExecutor(max_workers=10) as executor:
         executor.map(process_symbol, symbols)
 
+def gorseldeki_birebir_test_mesajini_at():
+    """Fotoğraflı mesaj sistemini test eder."""
+    time.sleep(3)
+    symbol = "TEST"
+    last_price = 1.70
+    tight_stop = 1.67
+    vol_ratio = 2.9
+    tp1, tp1_pct = 1.84, 8.5
+    tp2, tp2_pct = 2.25, 32.4
+    tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
+    
+    msg = (
+        f"⚡ NASDAQ ALARMI: #{symbol}\n\n"
+        f"📊 Sinyal Durumu: 🟢 Gerçek Kırılım 1 (Güçlü)\n"
+        f"📝 Analiz: Direnç kırıldı, kırılım türü fotoğraftaki yapı ile eşleşiyor.\n\n"
+        f"💵 Giriş / Kırılım: ${last_price:.2f}\n"
+        f"🛡️ Stop (-%2.0): ${tight_stop:.2f}\n"
+        f"📈 Hacim Gücü: {vol_ratio:.1f}x katı\n\n"
+        f"🎯 1. Kademe Satış (+%{tp1_pct:.1f}): ${tp1:.2f}\n"
+        f"🎯 2. Kademe Satış (+%{tp2_pct:.1f}): ${tp2:.2f}\n\n"
+        f"🔥 MOTİVASYON: Obez olma !\n\n"
+        f"🔗 [TradingView'de Grafiği Aç]({tv_url})"
+    )
+    send_telegram_photo(IMAGE_URLS["GERCEK_1"], msg)
+
 def start_scanner_loop():
     send_telegram_msg("🚀 **Nasdaq Scanner Aktif!**")
+    # Test mesajını tetikler
+    threading.Thread(target=gorseldeki_birebir_test_mesajini_at, daemon=True).start()
+    
     while True:
         canli_kesintisiz_tarama()
 
