@@ -47,7 +47,7 @@ IMAGE_URLS = {
 
 
 # ==========================================
-# 3. TELEGRAM İLETİŞİM FONKSİYONLARI (SAĞ TARAFTA KÜÇÜK ÖNİZLEME)
+# 3. TELEGRAM İLETİŞİM FONKSİYONLARI (SAĞ TARAFTA SAĞA SABİT ÖNİZLEME)
 # ==========================================
 def send_telegram_msg(message):
     """Standart metin mesajı gönderir."""
@@ -65,13 +65,13 @@ def send_telegram_msg(message):
 
 def send_telegram_side_photo(photo_url, caption):
     """
-    Görseli alt tarafa büyük yaymak yerine sağ tarafa küçük 
-    ve kırpılmayan bir önizleme (thumbnail) olarak yerleştirir.
+    Görseli alta büyük yerleştirmeyip sağ tarafa küçük kare 
+    önizleme olarak zorlar.
     """
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     
-    # Metnin görünmeyen bir yerine gizli resim bağlantısı eklenir
-    message_with_preview = f"[\u200b]({photo_url})" + caption
+    # Görünmeyen karakter ile linki mesaj başına gömüyoruz
+    message_with_preview = f"[\u200b]({photo_url}){caption}"
     
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
