@@ -32,7 +32,6 @@ TELEGRAM_BOT_TOKEN = "8750813780:AAGwTUsULcuj6_X9-BE0BfPzjA3yJnvqf5E"
 TELEGRAM_CHAT_ID = "7743041008"
 RENDER_DEPLOY_HOOK_URL = "https://api.render.com/deploy/srv-daemtan40ujc73ft425g?key=o1ghEoCwW10"
 MAX_PRICE_LIMIT = 3.50
-START_TIME = datetime.datetime.now()
 
 bildirilenler = {}          
 gunluk_sinyaller = {}       
@@ -111,13 +110,8 @@ def check_telegram_commands():
                         send_telegram_msg(status_msg)
 
                     elif text in ["/status", "/durum"]:
-                        calisma_suresi = datetime.datetime.now() - START_TIME
-                        saat, remainder = divmod(int(calisma_suresi.total_seconds()), 3600)
-                        dakika, _ = divmod(remainder, 60)
-                        
                         durum_msg = (
                             f"🖥️ **Bot Sistem Durumu**\n\n"
-                            f"⏱️ **Çalışma Süresi:** `{saat} saat {dakika} dakika`\n"
                             f"💵 **Üst Fiyat Limiti:** `${MAX_PRICE_LIMIT:.2f}`\n"
                             f"📊 **Bugünkü Sinyal Sayısı:** `{len(gunluk_sinyaller)} adet`\n"
                             f"🌐 **Sunucu Durumu:** Sağlıklı (Render Aktif)"
@@ -136,9 +130,9 @@ def check_telegram_commands():
                     elif text in ["/help", "/yardim"]:
                         yardim_msg = (
                             "🤖 **Nasdaq Scanner Bot Komutları:**\n\n"
-                            "• `/ping` veya `/pingms` - Sunucu hızını ölçer.\n"
-                            "• `/status` veya `/durum` - Detaylı sistem durumunu gösterir.\n"
-                            "• `/stats` veya `/ozet` - Güncel sinyal özetini listeler.\n"
+                            "• `/ping` - Sunucu hızını ölçer.\n"
+                            "• `/status` - Sistem durumunu gösterir.\n"
+                            "• `/stats` - Güncel sinyal özetini listeler.\n"
                             "• `/limit [değer]` - Fiyat limitini değiştirir (Örn: `/limit 4.0`)\n"
                             "• `/render` - Botu Render üzerinde yeniden başlatır."
                         )
@@ -394,7 +388,6 @@ def gun_sonu_raporu_gonder():
 # ==========================================
 def canli_kesintisiz_tarama():
     global rapor_gonderildi_bugun
-    check_telegram_commands()
 
     now = datetime.datetime.utcnow() + datetime.timedelta(hours=3)
     if now.hour == 23 and now.minute == 0:
@@ -411,23 +404,25 @@ def canli_kesintisiz_tarama():
     with ThreadPoolExecutor(max_workers=10) as executor:
         executor.map(process_symbol, symbols)
 
-def telegram_komut_dinleme_loop():
-    """Tarama döngüsünden bağımsız olarak Telegram komutlarını her saniye dinler"""
+def start_scanner_loop():
+    send_telegram_msg("🚀 **Nasdaq Scanner Aktif!**")
+    
     while True:
         try:
-            check_telegram_commands()
+            canli_kesintisiz_tarama()
         except Exception as e:
-            print(f"Komut dinleme hatası: {e}")
-        time.sleep(2) # Her 2 saniyede bir Telegram'ı kontrol eder
+            print(f"Tarama döngüsü hatası: {e}")
+        
+        time.sleep(300)
 
 def telegram_komut_dinleme_loop():
-    """Tarama döngüsünden bağımsız olarak Telegram komutlarını sürekli dinler"""
+    """Telegram komutlarını tarama döngüsünden bağımsız olarak anlık dinler"""
     while True:
         try:
             check_telegram_commands()
         except Exception as e:
             print(f"Komut dinleme hatası: {e}")
-        time.sleep(2)  # Her 2 saniyede bir komutları kontrol eder
+        time.sleep(2)
 
 if __name__ == '__main__':
     threading.Thread(target=haber_tarama_loop, daemon=True).start()
