@@ -404,7 +404,7 @@ def start_scanner_loop():
     threading.Thread(target=gorseldeki_birebir_test_mesajini_at, daemon=True).start()
     
     while True:
-        canli_kesintisiz_tarama()
+        canli_kesintisiz_tarama() # <--- Hiç durmadan binlerce hisseyi tarar!
 
 if __name__ == '__main__':
     threading.Thread(target=haber_tarama_loop, daemon=True).start()
