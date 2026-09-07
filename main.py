@@ -47,7 +47,7 @@ IMAGE_URLS = {
 
 
 # ==========================================
-# 3. TELEGRAM İLETİŞİM FONKSİYONLARI (SAĞ TARAFTA SAĞA SABİT ÖNİZLEME)
+# 3. TELEGRAM İLETİŞİM FONKSİYONLARI (SENDPHOTO İLE FOTOĞRAFLI MESAJ)
 # ==========================================
 def send_telegram_msg(message):
     """Standart metin mesajı gönderir."""
@@ -65,24 +65,15 @@ def send_telegram_msg(message):
 
 def send_telegram_side_photo(photo_url, caption):
     """
-    Görseli alta büyük yerleştirmeyip sağ tarafa küçük kare 
-    önizleme olarak zorlar.
+    Fotoğrafı sendPhoto metoduyla doğrudan Telegram medya mesajı
+    olarak (altında metniyle) gönderir.
     """
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    
-    # Görünmeyen karakter ile linki mesaj başına gömüyoruz
-    message_with_preview = f"[\u200b]({photo_url}){caption}"
-    
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID,
-        "text": message_with_preview,
-        "parse_mode": "Markdown",
-        "link_preview_options": {
-            "is_disabled": False,
-            "url": photo_url,
-            "prefer_small_media": True,
-            "show_above_text": False
-        }
+        "photo": photo_url,
+        "caption": caption,
+        "parse_mode": "Markdown"
     }
     try:
         res = requests.post(url, json=payload)
@@ -362,7 +353,7 @@ def gun_sonu_raporu_gonder():
 # 9. CANLI TARAMA VE PROGRAM BAŞLATICI
 # ==========================================
 def gorseldeki_birebir_test_mesajini_at():
-    """Sağ taraf resim önizlemesini test eder."""
+    """Fotoğraflı mesaj gönderimini test eder."""
     time.sleep(3)
     
     symbol = "TEST"
