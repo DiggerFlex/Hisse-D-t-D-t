@@ -1,6 +1,7 @@
 import time
 import datetime
 import threading
+import os
 import requests
 import feedparser
 import yfinance as yf
@@ -20,7 +21,8 @@ def home():
     return "NASDAQ Scanner Active!"
 
 def run_flask():
-    app.run(host='0.0.0.0', port=10000)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
 
 
 # ==========================================
@@ -38,7 +40,7 @@ gonderilen_haberler = set()
 rapor_gonderildi_bugun = False
 last_update_id = 0          
 
-# Gönderdiğin görsellerin birebir ImBB bağlantıları
+# Kırılım Tipi ImgBB Görsel Linkleri
 IMAGE_URLS = {
     "GERCEK_1": "https://i.ibb.co/WWSb4Fn0/Ekran-g-r-nt-s-2026-09-07-171021.png",
     "GERCEK_2": "https://i.ibb.co/Ngq2DTrm/Ekran-g-r-nt-s-2026-09-07-171029.png",
@@ -110,13 +112,13 @@ def check_telegram_commands():
 
                     elif text == "/render":
                         if RENDER_DEPLOY_HOOK_URL:
-                            send_telegram_msg("🔄 **Render Redeploy Tetiklendi!** Yeniden başlatılıyor...")
+                            send_telegram_msg("🔄 **Render Tetiklendi!** Yeniden başlatılıyor...")
                             try:
                                 requests.post(RENDER_DEPLOY_HOOK_URL, timeout=10)
                             except Exception as e:
                                 send_telegram_msg(f"⚠️ Render tetikleme hatası: {e}")
                         else:
-                            send_telegram_msg("⚠️ Render Deploy Hook URL tanımlı değil.")
+                            send_telegram_msg("⚠️ Render Deploy Hook URL tanımlı olmayabilir.")
 
                     elif text.startswith("/limit"):
                         parts = text.split()
@@ -231,7 +233,7 @@ def process_symbol(symbol):
                 return
 
             if symbol not in bildirilenler or (time.time() - bildirilenler[symbol]) > 60:
-                tight_stop = last_price * 0.98   
+                tight_stop = last_price * 0.98    
                 tp1, tp1_pct, tp2, tp2_pct = calculate_dynamic_targets(df, last_price)
                 tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
 
@@ -348,7 +350,7 @@ def gun_sonu_raporu_gonder():
             continue
 
     ort_kar = toplam_kar / len(gunluk_sinyaller) if gunluk_sinyaller else 0
-    rapor += f"🎯 **Günlük Ortalama Max Potansiyel:** %{ort_kar:.1f}"
+    rapor += f"🎯 **Günlük Ortalama Kazancı:** %{ort_kar:.1f}"
     send_telegram_msg(rapor)
     gunluk_sinyaller.clear()
 
@@ -356,30 +358,6 @@ def gun_sonu_raporu_gonder():
 # ==========================================
 # 9. CANLI TARAMA VE PROGRAM BAŞLATICI
 # ==========================================
-def gorseldeki_birebir_test_mesajini_at():
-    time.sleep(3)
-    
-    symbol = "TEST"
-    last_price = 1.70
-    tight_stop = 1.67
-    vol_ratio = 2.9
-    tp1, tp1_pct = 1.84, 8.5
-    tp2, tp2_pct = 2.25, 32.4
-    tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
-    
-    msg = (
-        f"⚡ NASDAQ ALARMI: #{symbol}\n\n"
-        f"📊 Sinyal Durumu: 🟢 Gerçek Kırılım 1 (Güçlü)\n"
-        f"📝 Analiz: Direnç kırıldı, kırılım türü fotoğraftaki yapı ile eşleşiyor.\n\n"
-        f"💵 Giriş / Kırılım: ${last_price:.2f}\n"
-        f"🛡️ Stop (-%2.0): ${tight_stop:.2f}\n\n"
-        f"📈 Hacim Gücü: {vol_ratio:.1f}x katı\n\n"
-        f"🎯 1. Kademe Satış (+%{tp1_pct:.1f}): ${tp1:.2f}\n"
-        f"🎯 2. Kademe Satış (+%{tp2_pct:.1f}): ${tp2:.2f}\n\n"
-        f"🔗 [TradingView'de Grafiği Aç]({tv_url})"
-    )
-    send_telegram_side_photo(IMAGE_URLS["GERCEK_1"], msg)
-
 def canli_kesintisiz_tarama():
     global rapor_gonderildi_bugun
     check_telegram_commands()
@@ -399,13 +377,17 @@ def canli_kesintisiz_tarama():
     with ThreadPoolExecutor(max_workers=10) as executor:
         executor.map(process_symbol, symbols)
 
-# KODUNUN EN ALTINDAKİ ESKİ KISIM (Bunu silip yerine aşağıdakini atacaksın):
 def start_scanner_loop():
     send_telegram_msg("🚀 **Nasdaq Scanner Aktif!**")
-    threading.Thread(target=gorseldeki_birebir_test_mesajini_at, daemon=True).start()
     
     while True:
-        canli_kesintisiz_tarama()
+        try:
+            canli_kesintisiz_tarama()
+        except Exception as e:
+            print(f"Tarama döngüsü hatası: {e}")
+        
+        # Yahoo Finance ve sunucu aşırı yüklenmesini önlemek için tur aralarında 5 dakika bekleme
+        time.sleep(300)
 
 if __name__ == '__main__':
     threading.Thread(target=haber_tarama_loop, daemon=True).start()
