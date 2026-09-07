@@ -106,9 +106,7 @@ def check_telegram_commands():
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
     
     try:
-        start_req = time.time()
         res = requests.get(url, params={"offset": last_update_id + 1, "timeout": 2}).json()
-        latency = (time.time() - start_req) * 1000
         
         if "result" in res:
             for update in res["result"]:
@@ -131,13 +129,7 @@ def check_telegram_commands():
                             send_telegram_msg("⚠️ Tarama zaten aktif çalışıyor.")
 
                     elif text in ["/ping", "/pingms"]:
-                        status_str = "Aktif & Çalışıyor" if is_running else "Durduruldu (Beklemede)"
-                        status_msg = (
-                            f"⚡ **Sunucu Yanıt Süresi:** `{latency:.0f} ms`\n"
-                            f"🟢 **Durum:** {status_str}\n"
-                            f"💵 **Mevcut Limit:** ${MAX_PRICE_LIMIT:.2f}"
-                        )
-                        send_telegram_msg(status_msg)
+                        send_telegram_msg("ping")
 
                     elif text in ["/status", "/durum"]:
                         status_str = "Aktif & Çalışıyor" if is_running else "Durduruldu (Beklemede)"
@@ -164,7 +156,7 @@ def check_telegram_commands():
                             "🤖 **Nasdaq Scanner Bot Komutları:**\n\n"
                             "• `/start` - Taramayı başlatır.\n"
                             "• `/stop` - Taramayı durdurur.\n"
-                            "• `/ping` - Sunucu hızını ölçer.\n"
+                            "• `/ping` - Botun aktifliğini kontrol eder.\n"
                             "• `/status` - Sistem durumunu gösterir.\n"
                             "• `/stats` - Güncel sinyal özetini listeler.\n"
                             "• `/limit [değer]` - Fiyat limitini değiştirir (Örn: `/limit 4.0`)\n"
