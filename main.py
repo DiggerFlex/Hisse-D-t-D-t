@@ -45,23 +45,36 @@ IMAGE_URLS = {
     "ONAYLI": "https://i.ibb.co/6cVBJZbB/onayli.png"
 }
 
-
 # ==========================================
-# 3. TELEGRAM İLETİŞİM FONKSİYONLARI (SAĞ TARAFTA SAĞDA ÖNİZLEME)
+# TELEGRAM İLETİŞİM FONKSİYONU (SAĞ TARAFTA KÜÇÜK ÖNİZLEME)
 # ==========================================
-def send_telegram_msg(message):
-    """Standart metin mesajı gönderir."""
+def send_telegram_side_photo(photo_url, caption):
+    """
+    Görseli alta büyük koymak yerine sağ tarafa küçük önizleme 
+    (thumbnail) olarak yerleştirir.
+    """
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    
+    # Metnin başına gizli link yerleştirilir
+    message_with_preview = f"[\u200b]({photo_url})" + caption
+    
     payload = {
-        "chat_id": TELEGRAM_CHAT_ID, 
-        "text": message, 
+        "chat_id": TELEGRAM_CHAT_ID,
+        "text": message_with_preview,
         "parse_mode": "Markdown",
-        "disable_web_page_preview": True
+        "link_preview_options": {
+            "is_disabled": False,
+            "url": photo_url,
+            "prefer_small_media": True,     # Resmi sağ tarafa küçük kare yapar
+            "show_above_text": False        # Metnin altında kalmasını engeller
+        }
     }
     try:
-        requests.post(url, json=payload)
-    except Exception as e:
-        print(f"Telegram Baglanti Hatasi: {e}")
+        res = requests.post(url, json=payload)
+        if res.status_code != 200:
+            send_telegram_msg(caption)
+    except Exception:
+        send_telegram_msg(caption)
 
 def send_telegram_side_photo(photo_url, caption):
     """
