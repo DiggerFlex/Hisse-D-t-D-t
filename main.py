@@ -28,7 +28,7 @@ def run_flask():
 # ==========================================
 TELEGRAM_BOT_TOKEN = "8750813780:AAFCMXBLA1ZOsMUZz6vrSIJz5ccg94QMsdA"
 TELEGRAM_CHAT_ID = "7743041008"
-RENDER_DEPLOY_HOOK_URL = ""  # Render Settings -> Deploy Hook URL'inizi buraya girin
+RENDER_DEPLOY_HOOK_URL = ""  # Render Settings -> Deploy Hook URL'ini buraya yapıştırabilirsin
 
 MAX_PRICE_LIMIT = 3.50
 START_TIME = datetime.datetime.now()
@@ -39,6 +39,7 @@ gonderilen_haberler = set()
 rapor_gonderildi_bugun = False
 last_update_id = 0          
 
+# 4 Eşit Parçaya Bölünmüş Resim Linkleri
 IMAGE_URLS = {
     "GERCEK_1": "https://i.ibb.co/jvDvD72k/Ekran-g-r-nt-s-2026-09-07-153215.png",
     "GERCEK_2": "https://i.ibb.co/PzbLMgkY/Ekran-g-r-nt-s-2026-09-07-153232.png",
@@ -79,7 +80,7 @@ def send_telegram_side_photo(photo_url, caption):
         print(f"Resim gonderme hatasi: {e}")
 
 def check_telegram_commands():
-    """Telegram'dan gelen komutları anlık dinler."""
+    """Telegram komutlarını dinler (/ping, /render, /limit)."""
     global MAX_PRICE_LIMIT, last_update_id
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
     
@@ -94,6 +95,7 @@ def check_telegram_commands():
                 if "message" in update and "text" in update["message"]:
                     text = update["message"]["text"].strip()
                     
+                    # /ping veya /pingms
                     if text in ["/ping", "/pingms"]:
                         status_msg = (
                             f"⚡ **Sunucu Yanıt Süresi:** `{latency:.0f} ms`\n"
@@ -102,6 +104,7 @@ def check_telegram_commands():
                         )
                         send_telegram_msg(status_msg)
 
+                    # /render komutu
                     elif text == "/render":
                         if RENDER_DEPLOY_HOOK_URL and "srv-" in RENDER_DEPLOY_HOOK_URL:
                             send_telegram_msg("🔄 **Render Redeploy Tetiklendi!** Yeniden başlatılıyor...")
@@ -112,6 +115,7 @@ def check_telegram_commands():
                         else:
                             send_telegram_msg("⚠️ Lütfen `RENDER_DEPLOY_HOOK_URL` değişkenine Deploy Hook linkini girin.")
 
+                    # /limit komutu
                     elif text.startswith("/limit"):
                         parts = text.split()
                         if len(parts) == 1:
