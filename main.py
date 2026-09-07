@@ -38,7 +38,7 @@ gunluk_sinyaller = {}
 gonderilen_haberler = set() 
 rapor_gonderildi_bugun = False
 last_update_id = 0          
-is_running = True  # Botun aktif/pasif çalışma bayrağı
+is_running = True
 
 # Kırılım Tipi ImgBB Görsel Linkleri
 IMAGE_URLS = {
@@ -64,6 +64,20 @@ def send_telegram_msg(message):
         requests.post(url, json=payload, timeout=10)
     except Exception as e:
         print(f"Telegram Baglanti Hatasi: {e}")
+
+def edit_telegram_msg(message_id, new_text):
+    """Mevcut Telegram mesajını canlı güncellemeye yarar."""
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/editMessageText"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "message_id": message_id,
+        "text": new_text,
+        "parse_mode": "Markdown"
+    }
+    try:
+        requests.post(url, json=payload, timeout=5)
+    except Exception as e:
+        print(f"Mesaj guncelleme hatasi: {e}")
 
 def send_telegram_side_photo(photo_url, caption):
     url_photo = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
@@ -154,19 +168,42 @@ def check_telegram_commands():
                             "• `/status` - Sistem durumunu gösterir.\n"
                             "• `/stats` - Güncel sinyal özetini listeler.\n"
                             "• `/limit [değer]` - Fiyat limitini değiştirir (Örn: `/limit 4.0`)\n"
-                            "• `/render` - Botu Render üzerinde yeniden başlatır."
+                            "• `/render` - Botu Render üzerinde canlı bar ile yeniden başlatır."
                         )
                         send_telegram_msg(yardim_msg)
 
                     elif text == "/render":
                         if RENDER_DEPLOY_HOOK_URL:
-                            send_telegram_msg("🔄 **Render Tetiklendi!** Yeniden başlatılıyor...")
+                            init_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+                            init_res = requests.post(init_url, json={
+                                "chat_id": TELEGRAM_CHAT_ID,
+                                "text": "🔄 **Render Deploy Tetikleniyor...**\n`[░░░░░░░░░░] %0`",
+                                "parse_mode": "Markdown"
+                            }).json()
+                            
+                            msg_id = init_res.get("result", {}).get("message_id")
+                            
                             try:
                                 requests.post(RENDER_DEPLOY_HOOK_URL, timeout=10)
+                                progress_steps = [
+                                    (20, "▓▓░░░░░░░░", "Render isteği doğrulandı..."),
+                                    (45, "▓▓▓▓▓░░░░░", "Bağımlılıklar kuruluyor (Build)..."),
+                                    (75, "▓▓▓▓▓▓▓▓░░", "Konteyner ayağa kaldırılıyor..."),
+                                    (90, "▓▓▓▓▓▓▓▓▓░", "Canlı servis başlatılıyor..."),
+                                    (100, "▓▓▓▓▓▓▓▓▓▓", "Deployment Tamamlandı! 🚀")
+                                ]
+                                for pct, bar, status_text in progress_steps:
+                                    time.sleep(3)
+                                    if msg_id:
+                                        edit_telegram_msg(
+                                            msg_id, 
+                                            f"🔄 **Render Deploy Ediliyor...**\n`[{bar}] %{pct}`\n📌 *{status_text}*"
+                                        )
                             except Exception as e:
-                                send_telegram_msg(f"⚠️ Render tetikleme hatası: {e}")
+                                if msg_id:
+                                    edit_telegram_msg(msg_id, f"⚠️ **Render tetikleme hatası:** {e}")
                         else:
-                            send_telegram_msg("⚠️ Render Deploy Hook URL tanımlı olmayabilir.")
+                            send_telegram_msg("⚠️ Render Deploy Hook URL tanımlı değil.")
 
                     elif text.startswith("/limit"):
                         parts = text.split()
