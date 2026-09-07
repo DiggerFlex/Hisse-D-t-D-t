@@ -83,18 +83,44 @@ def send_telegram_side_photo(photo_url, caption):
         print(f"Resim gonderme hatasi: {e}")
 
 def check_telegram_commands():
-    """Telegram'dan gelen /limit komutlarını anlık dinler."""
+    """Telegram'dan gelen komutları anlık dinler."""
     global MAX_PRICE_LIMIT, last_update_id
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/getUpdates"
     
     try:
+        start_req = time.time()  # İstek başlangıç zamanı
         res = requests.get(url, params={"offset": last_update_id + 1, "timeout": 2}).json()
+        latency = (time.time() - start_req) * 1000  # Gecikmeyi milisaniye (ms) olarak hesapla
+        
         if "result" in res:
             for update in res["result"]:
                 last_update_id = update["update_id"]
                 if "message" in update and "text" in update["message"]:
                     text = update["message"]["text"].strip()
-                    if text.startswith("/limit"):
+                    
+                    # /ping veya /pingms komutu geldiğinde
+                    if text in ["/ping", "/pingms"]:
+                        status_msg = (
+                            f"🏓 **PONG!**\n\n"
+                            f"⚡ **Sunucu Yanıt Süresi:** `{latency:.0f} ms`\n"
+                            f"🟢 **Durum:** Aktif & Çalışıyor\n"
+                            f"💵 **Mevcut Limit:** ${MAX_PRICE_LIMIT:.2f}"
+                        )
+                        send_telegram_msg(status_msg)
+
+                    # /render komutu geldiğinde (Render Redeploy)
+                    elif text == "/render":
+                        if "srv-" in RENDER_DEPLOY_HOOK_URL:
+                            send_telegram_msg("🔄 **Render Redeploy Tetiklendi!** Yeniden başlatılıyor...")
+                            try:
+                                requests.post(RENDER_DEPLOY_HOOK_URL, timeout=10)
+                            except Exception as e:
+                                send_telegram_msg(f"⚠️ Render tetikleme hatası: {e}")
+                        else:
+                            send_telegram_msg("⚠️ Lütfen `RENDER_DEPLOY_HOOK_URL` değişkenine Deploy Hook linkini girin.")
+
+                    # /limit komutu kontrolü
+                    elif text.startswith("/limit"):
                         parts = text.split()
                         if len(parts) == 1:
                             send_telegram_msg(f"ℹ️ **Mevcut Üst Fiyat Limiti:** ${MAX_PRICE_LIMIT:.2f}")
@@ -110,7 +136,6 @@ def check_telegram_commands():
                                 send_telegram_msg("⚠️ Geçersiz format! Örnek kullanım: `/limit 3.5` veya `/limit 5`")
     except Exception:
         pass
-
 
 # ==========================================
 # 4. BORSADAN HİSSE LİSTESİ ÇEKME
