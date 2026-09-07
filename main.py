@@ -39,12 +39,12 @@ gonderilen_haberler = set()
 rapor_gonderildi_bugun = False
 last_update_id = 0          
 
-# 4 Eşit Parçaya Bölünmüş Resim Linkleri
+# Tam Dikey Çizgilerden 4 Eşit Parçaya Bölünmüş Resim Linkleri
 IMAGE_URLS = {
-    "GERCEK_1": "https://i.ibb.co/jvDvD72k/Ekran-g-r-nt-s-2026-09-07-153215.png",
-    "GERCEK_2": "https://i.ibb.co/PzbLMgkY/Ekran-g-r-nt-s-2026-09-07-153232.png",
-    "YAVAS_HACIM": "https://i.ibb.co/V0Lm3KLD/Ekran-g-r-nt-s-2026-09-07-153259.png",
-    "ONAYLI": "https://i.ibb.co/CpN2stv2/Ekran-g-r-nt-s-2026-09-07-153308.png"
+    "GERCEK_1": "https://i.ibb.co/LDr0kCpx/part1.png",
+    "GERCEK_2": "https://i.ibb.co/kgY1tWpY/part2.png",
+    "YAVAS_HACIM": "https://i.ibb.co/3ykG8LwH/part3.png",
+    "ONAYLI": "https://i.ibb.co/3y26p48q/part4.png"
 }
 
 
@@ -95,7 +95,6 @@ def check_telegram_commands():
                 if "message" in update and "text" in update["message"]:
                     text = update["message"]["text"].strip()
                     
-                    # /ping veya /pingms
                     if text in ["/ping", "/pingms"]:
                         status_msg = (
                             f"⚡ **Sunucu Yanıt Süresi:** `{latency:.0f} ms`\n"
@@ -104,7 +103,6 @@ def check_telegram_commands():
                         )
                         send_telegram_msg(status_msg)
 
-                    # /render komutu
                     elif text == "/render":
                         if RENDER_DEPLOY_HOOK_URL and "srv-" in RENDER_DEPLOY_HOOK_URL:
                             send_telegram_msg("🔄 **Render Redeploy Tetiklendi!** Yeniden başlatılıyor...")
@@ -115,7 +113,6 @@ def check_telegram_commands():
                         else:
                             send_telegram_msg("⚠️ Lütfen `RENDER_DEPLOY_HOOK_URL` değişkenine Deploy Hook linkini girin.")
 
-                    # /limit komutu
                     elif text.startswith("/limit"):
                         parts = text.split()
                         if len(parts) == 1:
@@ -237,12 +234,13 @@ def process_symbol(symbol):
                 tp1, tp1_pct, tp2, tp2_pct = calculate_dynamic_targets(df, last_price)
                 tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
 
+                # Boşluklar eklendi ve düzenlendi
                 msg = (
                     f"⚡ NASDAQ ALARMI: #{symbol}\n\n"
                     f"📊 Sinyal Durumu: 🟢 {kirilim_adi}\n"
                     f"📝 Analiz: Direnç kırıldı, kırılım türü fotoğraftaki yapı ile eşleşiyor.\n\n"
                     f"💵 Giriş / Kırılım: ${last_price:.2f}\n"
-                    f"🛡️ Stop (-%2.0): ${tight_stop:.2f}\n"
+                    f"🛡️ Stop (-%2.0): ${tight_stop:.2f}\n\n"
                     f"📈 Hacim Gücü: {vol_ratio:.1f}x katı\n\n"
                     f"🎯 1. Kademe Satış (+%{tp1_pct:.1f}): ${tp1:.2f}\n"
                     f"🎯 2. Kademe Satış (+%{tp2_pct:.1f}): ${tp2:.2f}\n\n"
@@ -387,7 +385,7 @@ def gorseldeki_birebir_test_mesajini_at():
         f"📊 Sinyal Durumu: 🟢 Gerçek Kırılım 1 (Güçlü)\n"
         f"📝 Analiz: Direnç kırıldı, kırılım türü fotoğraftaki yapı ile eşleşiyor.\n\n"
         f"💵 Giriş / Kırılım: ${last_price:.2f}\n"
-        f"🛡️ Stop (-%2.0): ${tight_stop:.2f}\n"
+        f"🛡️ Stop (-%2.0): ${tight_stop:.2f}\n\n"
         f"📈 Hacim Gücü: {vol_ratio:.1f}x katı\n\n"
         f"🎯 1. Kademe Satış (+%{tp1_pct:.1f}): ${tp1:.2f}\n"
         f"🎯 2. Kademe Satış (+%{tp2_pct:.1f}): ${tp2:.2f}\n\n"
