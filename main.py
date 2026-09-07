@@ -37,12 +37,20 @@ gonderilen_haberler = set()
 rapor_gonderildi_bugun = False
 last_update_id = 0          
 
+# Kırılım tiplerine ait temsilî görsel URL'leri (Kendi resim URL'lerin ile değiştirebilirsin)
+IMAGE_URLS = {
+    "GERCEK_1": "https://i.imgur.com/8Q9Z3v1.png",      # Gerçek Kırılım (Güçlü Yeşil Mum)
+    "GERCEK_2": "https://i.imgur.com/5X2A7y8.png",      # Gerçek Kırılım (Fitilli/Geri Çekilmeli)
+    "YAVAS_HACIM": "https://i.imgur.com/2N1M9p0.png",   # Yavaş Hacimli Kırılım
+    "ONAYLI": "https://i.imgur.com/9K4L7w2.png"        # Onaylı Kırılım (Retest)
+}
+
 
 # ==========================================
-# 3. TELEGRAM İLETİŞİM FONKSİYONLARI
+# 3. TELEGRAM İLETİŞİM FONKSİYONLARI (FOTOĞRAFLI)
 # ==========================================
 def send_telegram_msg(message):
-    """Telegram API üzerinden belirlenen kanala Markdown formatında mesaj atar."""
+    """Metin odaklı Telegram mesajı gönderir."""
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     payload = {
         "chat_id": TELEGRAM_CHAT_ID, 
@@ -51,11 +59,26 @@ def send_telegram_msg(message):
         "disable_web_page_preview": True
     }
     try:
-        res = requests.post(url, json=payload)
-        if res.status_code != 200:
-            print(f"Telegram Hatasi: {res.text}")
+        requests.post(url, json=payload)
     except Exception as e:
         print(f"Telegram Baglanti Hatasi: {e}")
+
+def send_telegram_photo(photo_url, caption):
+    """Görsel ve altına açıklama metni ekleyerek Telegram mesajı gönderir."""
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+    payload = {
+        "chat_id": TELEGRAM_CHAT_ID,
+        "photo": photo_url,
+        "caption": caption,
+        "parse_mode": "Markdown"
+    }
+    try:
+        res = requests.post(url, json=payload)
+        if res.status_code != 200:
+            # Görsel gönderilemezse yedek olarak sadece metin gönderir
+            send_telegram_msg(caption)
+    except Exception:
+        send_telegram_msg(caption)
 
 def check_telegram_commands():
     """Telegram'dan gelen /limit komutlarını anlık dinler."""
@@ -69,7 +92,6 @@ def check_telegram_commands():
                 last_update_id = update["update_id"]
                 if "message" in update and "text" in update["message"]:
                     text = update["message"]["text"].strip()
-                    
                     if text.startswith("/limit"):
                         parts = text.split()
                         if len(parts) == 1:
@@ -103,15 +125,10 @@ def get_penny_stocks():
 
 
 # ==========================================
-# 5. DİNAMİK HEDEF HESAPLAMA (ATR & PİVOT)
+# 5. DİNAMİK HEDEF & KIRILIM TİPİ TESPİTİ
 # ==========================================
-def calculate_dynamic_targets(df, last_price, resistance):
-    """
-    Hissenin volatilite (ATR) ve geçmiş pivot noktalarına göre
-    gerçekçi patlama hedeflerini dinamik hesaplar.
-    """
+def calculate_dynamic_targets(df, last_price):
     try:
-        # ATR (Average True Range) Hesabı (Son 14 mum)
         high_low = df['High'] - df['Low']
         high_close = np.abs(df['High'] - df['Close'].shift())
         low_close = np.abs(df['Low'] - df['Close'].shift())
@@ -120,20 +137,41 @@ def calculate_dynamic_targets(df, last_price, resistance):
         atr = true_range.rolling(14).mean().iloc[-1]
 
         if pd.isna(atr) or atr == 0:
-            atr = last_price * 0.03 # Varsayılan %3 ATR
+            atr = last_price * 0.03
 
-        # 1. Kademe Hedef: Min %5, dinamik olarak 1.5x ATR
         tp1_dyn = max(last_price * 1.05, last_price + (1.5 * atr))
         tp1_pct = ((tp1_dyn - last_price) / last_price) * 100
 
-        # 2. Kademe Hedef (Ana Patlama): Min %15, dinamik olarak 3.5x ATR veya üst pivot
         tp2_dyn = max(last_price * 1.15, last_price + (3.5 * atr))
         tp2_pct = ((tp2_dyn - last_price) / last_price) * 100
 
         return tp1_dyn, tp1_pct, tp2_dyn, tp2_pct
     except Exception:
-        # Hata durumunda esnek dinamik varsayılanlar
         return last_price * 1.07, 7.0, last_price * 1.25, 25.0
+
+def detect_breakout_type(df, vol_ratio, resistance, last_price):
+    """
+    Görseldeki 4 senaryodan hangisinin gerçekleştiğini tespit eder.
+    """
+    prev_close = df['Close'].iloc[-2]
+    prev_high = df['High'].iloc[-2]
+    prev_low = df['Low'].iloc[-2]
+    
+    # 1. Onaylı Kırılım (Retest): Önceki mum direnci kırdı, şu anki mum dirence temas edip tepki veriyor
+    if prev_high > resistance and last_price >= resistance:
+        return "Onaylı Kırılım (Retest)", IMAGE_URLS["ONAYLI"]
+        
+    # 2. Yavaş Hacimli Kırılım: Hacim katı düşük (2.0x - 2.8x arası) ama yükseliş var
+    elif 2.0 <= vol_ratio < 2.8:
+        return "Yavaş Hacimli Kırılım", IMAGE_URLS["YAVAS_HACIM"]
+        
+    # 3. Gerçek Kırılım 2 (Fitilli/Aşağı İğneli Kırılım): Mum altında iğne bırakıp toparlamış
+    elif vol_ratio >= 2.8 and (df['Open'].iloc[-1] < prev_low or df['Low'].iloc[-1] < prev_close):
+        return "Gerçek Kırılım (İğneli)", IMAGE_URLS["GERCEK_2"]
+        
+    # 4. Gerçek Kırılım 1 (Doğrudan Güçlü Hacimli Kırılım)
+    else:
+        return "Gerçek Kırılım (Güçlü)", IMAGE_URLS["GERCEK_1"]
 
 
 # ==========================================
@@ -166,27 +204,20 @@ def process_symbol(symbol):
 
         if last_price <= resistance and distance_to_resistance <= 0.015 and last_price > open_price:
             
-            if vol_ratio >= 3.0:
-                risk_durumu = "🔥 Patlama Yakın"
-                aciklama = "Fiyat dirence dayandı, devasa hacimle direnci zorluyor!"
-            elif vol_ratio >= 2.0:
-                risk_durumu = "🟡 Normal Kırılım"
-                aciklama = "Direnç kırıldı, takip edilebilir."
+            if vol_ratio >= 2.0:
+                kirilim_adi, img_url = detect_breakout_type(df, vol_ratio, resistance, last_price)
             else:
                 return
 
             if symbol not in bildirilenler or (time.time() - bildirilenler[symbol]) > 60:
                 tight_stop = last_price * 0.98   
-                
-                # DİNAMİK HEDEF HESAPLAMA
-                tp1, tp1_pct, tp2, tp2_pct = calculate_dynamic_targets(df, last_price, resistance)
-
+                tp1, tp1_pct, tp2, tp2_pct = calculate_dynamic_targets(df, last_price)
                 tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
 
                 msg = (
                     f"⚡ NASDAQ ALARMI: #{symbol}\n\n"
-                    f"📊 Sinyal Durumu: {risk_durumu}\n"
-                    f"📝 Analiz: {aciklama}\n\n"
+                    f"📊 Sinyal Durumu: 🟢 {kirilim_adi}\n"
+                    f"📝 Analiz: Kırılım yapısı tespit edildi, grafik eşleşti.\n\n"
                     f"💵 Giriş / Kırılım: ${last_price:.2f}\n"
                     f"🛡️ Stop (-%2.0): ${tight_stop:.2f}\n"
                     f"📈 Hacim Gücü: {vol_ratio:.1f}x katı\n\n"
@@ -195,7 +226,9 @@ def process_symbol(symbol):
                     f"🔥 MOTİVASYON: Obez olma !\n\n"
                     f"🔗 [TradingView'de Grafiği Aç]({tv_url})"
                 )
-                send_telegram_msg(msg)
+                
+                # Görsel ile birlikte mesaj gönderimi
+                send_telegram_photo(img_url, msg)
                 bildirilenler[symbol] = time.time()
                 
                 if symbol not in gunluk_sinyaller:
@@ -210,7 +243,6 @@ def process_symbol(symbol):
 # ==========================================
 def kritik_piyasa_etkisi_analiz_et(metin):
     metin_lower = metin.lower()
-    
     olumlu_kelimeler = ["cut tariffs", "tax cut", "trade deal", "peace", "agreement", "support", "boost", "surge", "deregulation", "growth"]
     olumsuz_kelimeler = ["war", "strike", "attack", "sanction", "tariff", "tariffs", "threat", "china", "russia", "ban", "military", "missile", "crisis"]
 
@@ -247,7 +279,6 @@ def trump_ve_piyasa_haberleri_kontrol_et():
                         pub_time = pub_time.replace(tzinfo=datetime.timezone.utc)
                     
                     zaman_farki_dakika = (now_utc - pub_time).total_seconds() / 60.0
-                    
                     if zaman_farki_dakika > 60:
                         gonderilen_haberler.add(haber_id)
                         continue
@@ -256,12 +287,7 @@ def trump_ve_piyasa_haberleri_kontrol_et():
 
             if any(word in baslik_lower for word in kritik_kelimeler):
                 etki = kritik_piyasa_etkisi_analiz_et(entry.title)
-                
-                haber_mesaji = (
-                    f"⚠️ **Trump Açıklama** ⚠️\n\n"
-                    f"{etki}"
-                )
-                
+                haber_mesaji = f"⚠️ **Trump Açıklama** ⚠️\n\n{etki}"
                 send_telegram_msg(haber_mesaji)
                 gonderilen_haberler.add(haber_id)
                 
@@ -324,29 +350,24 @@ def gun_sonu_raporu_gonder():
 
 
 # ==========================================
-# 9. CANLI TARAMA VE PROGRAM BAŞLATICI (DİNAMİK TEST)
+# 9. CANLI TARAMA VE PROGRAM BAŞLATICI (FOTOĞRAFLI TEST)
 # ==========================================
 def gorseldeki_birebir_test_mesajini_at():
-    """Dinamik hedefli yeni mesaj yapısını test eder."""
+    """Fotoğraflı mesaj sistemini test eder."""
     time.sleep(3)
     
     symbol = "CISO"
     last_price = 1.70
     tight_stop = 1.67
     vol_ratio = 2.9
-    
-    # Test için dinamik potansiyel örneği (%8.5 ve %32.4 patlama hedefi)
-    tp1 = 1.84
-    tp1_pct = 8.5
-    tp2 = 2.25
-    tp2_pct = 32.4
-    
+    tp1, tp1_pct = 1.84, 8.5
+    tp2, tp2_pct = 2.25, 32.4
     tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
     
     msg = (
         f"⚡ NASDAQ ALARMI: #{symbol}\n\n"
-        f"📊 Sinyal Durumu: 🟡 Normal Kırılım\n"
-        f"📝 Analiz: Direnç kırıldı, dinamik potansiyel yüksek.\n\n"
+        f"📊 Sinyal Durumu: 🟢 Gerçek Kırılım (Güçlü)\n"
+        f"📝 Analiz: Direnç kırıldı, kırılım türü fotoğraftaki yapı ile eşleşiyor.\n\n"
         f"💵 Giriş / Kırılım: ${last_price:.2f}\n"
         f"🛡️ Stop (-%2.0): ${tight_stop:.2f}\n"
         f"📈 Hacim Gücü: {vol_ratio:.1f}x katı\n\n"
@@ -355,7 +376,7 @@ def gorseldeki_birebir_test_mesajini_at():
         f"🔥 MOTİVASYON: Obez olma !\n\n"
         f"🔗 [TradingView'de Grafiği Aç]({tv_url})"
     )
-    send_telegram_msg(msg)
+    send_telegram_photo(IMAGE_URLS["GERCEK_1"], msg)
 
 def canli_kesintisiz_tarama():
     global rapor_gonderildi_bugun
@@ -379,7 +400,6 @@ def canli_kesintisiz_tarama():
 
 def start_scanner_loop():
     send_telegram_msg("🚀 **Nasdaq Scanner Aktif!**")
-    
     threading.Thread(target=gorseldeki_birebir_test_mesajini_at, daemon=True).start()
     
     while True:
