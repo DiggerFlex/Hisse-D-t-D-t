@@ -408,6 +408,6 @@ def start_scanner_loop():
         canli_kesintisiz_tarama()
 
 if __name__ == '__main__':
-    threading.Thread(target=haber_tarama_loop, daemon=True).start()
-    threading.Thread(target=start_scanner_loop, daemon=True).start()
-    run_flask()
+    import os
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
