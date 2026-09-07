@@ -39,12 +39,12 @@ gonderilen_haberler = set()
 rapor_gonderildi_bugun = False
 last_update_id = 0          
 
-# Görsel Bağlantıları
+# Gönderdiğin görsellerin birebir ImBB bağlantıları
 IMAGE_URLS = {
-    "GERCEK_1": "https://i.imgur.com/40H3720.png",
-    "GERCEK_2": "https://i.imgur.com/40H3720.png",
-    "YAVAS_HACIM": "https://i.imgur.com/40H3720.png",
-    "ONAYLI": "https://i.imgur.com/40H3720.png"
+    "GERCEK_1": "https://i.ibb.co/WWSb4Fn0/Ekran-g-r-nt-s-2026-09-07-171021.png",
+    "GERCEK_2": "https://i.ibb.co/Ngq2DTrm/Ekran-g-r-nt-s-2026-09-07-171029.png",
+    "YAVAS_HACIM": "https://i.ibb.co/svqwGCJz/Ekran-g-r-nt-s-2026-09-07-171038.png",
+    "ONAYLI": "https://i.ibb.co/V0rY29P5/Ekran-g-r-nt-s-2026-09-07-171049.png"
 }
 
 
@@ -67,7 +67,6 @@ def send_telegram_msg(message):
 def send_telegram_side_photo(photo_url, caption):
     url_photo = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
     try:
-        # Tarayıcı gibi görünmek için Header eklendi (Imgur engelini aşar)
         headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
         img_response = requests.get(photo_url, headers=headers, timeout=15)
         
@@ -80,10 +79,8 @@ def send_telegram_side_photo(photo_url, caption):
             }
             res = requests.post(url_photo, data=payload, files=files, timeout=20).json()
             if not res.get("ok"):
-                print(f"Fotoğraf gönderilemedi, hata: {res}")
                 send_telegram_msg(caption)
         else:
-            print(f"Fotoğraf indirilemedi, HTTP Kod: {img_response.status_code}")
             send_telegram_msg(caption)
     except Exception as e:
         print(f"Resim gonderme hatasi: {e}")
