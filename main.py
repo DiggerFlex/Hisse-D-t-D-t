@@ -37,17 +37,17 @@ gonderilen_haberler = set()
 rapor_gonderildi_bugun = False
 last_update_id = 0          
 
-# ImgBB Doğrudan Resim Bağlantıları (.png / .jpg uzantılı)
+# Yüklediğin Tam Uyumlu 4 Parça Görsel Linki
 IMAGE_URLS = {
-    "GERCEK_1": "https://i.ibb.co/PZgZgBnG/gercek1.png",
-    "GERCEK_2": "https://i.ibb.co/k6r7JXZy/gercek2.png",
-    "YAVAS_HACIM": "https://i.ibb.co/6cyBNdyb/yavas.png",
-    "ONAYLI": "https://i.ibb.co/6cVBJZbB/onayli.png"
+    "GERCEK_1": "https://i.ibb.co/jvDvD72k/Ekran-g-r-nt-s-2026-09-07-153215.png",
+    "GERCEK_2": "https://i.ibb.co/PzbLMgkY/Ekran-g-r-nt-s-2026-09-07-153232.png",
+    "YAVAS_HACIM": "https://i.ibb.co/V0Lm3KLD/Ekran-g-r-nt-s-2026-09-07-153259.png",
+    "ONAYLI": "https://i.ibb.co/CpN2stv2/Ekran-g-r-nt-s-2026-09-07-153308.png"
 }
 
 
 # ==========================================
-# 3. TELEGRAM İLETİŞİM FONKSİYONLARI (AR ARDA İKİ AYRI MESAJ)
+# 3. TELEGRAM İLETİŞİM FONKSİYONLARI
 # ==========================================
 def send_telegram_msg(message):
     """Standart metin mesajı gönderir."""
@@ -59,26 +59,26 @@ def send_telegram_msg(message):
         "disable_web_page_preview": True
     }
     try:
-        requests.post(url, json=payload)
+        requests.post(url, json=payload, timeout=10)
     except Exception as e:
         print(f"Telegram Baglanti Hatasi: {e}")
 
 def send_telegram_side_photo(photo_url, caption):
     """
-    Önce hisse analiz metnini gönderir, 
-    hemen ardından kırılım görselini ayrı mesaj olarak gönderir.
+    1. Mesaj: Hisse detayları metni
+    2. Mesaj: Kırılım türünün fotoğrafı (Arka arkaya ayrı mesajlar)
     """
-    # 1. MESAJ: Metin mesajını at
+    # 1. Metin mesajını gönder
     send_telegram_msg(caption)
     
-    # 2. MESAJ: Görseli hemen arkasından ayrı bir mesaj olarak at
+    # 2. Fotoğrafı ayrı mesaj olarak hemen ardından gönder
     url_photo = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
     payload_photo = {
         "chat_id": TELEGRAM_CHAT_ID,
         "photo": photo_url
     }
     try:
-        requests.post(url_photo, json=payload_photo)
+        requests.post(url_photo, json=payload_photo, timeout=10)
     except Exception as e:
         print(f"Resim gonderme hatasi: {e}")
 
@@ -353,7 +353,7 @@ def gun_sonu_raporu_gonder():
 # 9. CANLI TARAMA VE PROGRAM BAŞLATICI
 # ==========================================
 def gorseldeki_birebir_test_mesajini_at():
-    """Art arda iki mesaj (Metin + Fotoğraf) gönderimini test eder."""
+    """Test mesajını çalıştırır."""
     time.sleep(3)
     
     symbol = "TEST"
