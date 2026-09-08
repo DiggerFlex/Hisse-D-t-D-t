@@ -31,7 +31,7 @@ def run_flask():
 TELEGRAM_BOT_TOKEN = "8750813780:AAHvWiUdKO6bzxBQHFx4GQnV9CHztjQaOH0"
 TELEGRAM_CHAT_ID = "7743041008"
 RENDER_DEPLOY_HOOK_URL = "https://api.render.com/deploy/srv-daemtan40ujc73ft425g?key=o1ghEoCwW10"
-MAX_PRICE_LIMIT = 3.50
+MAX_PRICE_LIMIT = 5.00
 
 bildirilenler = {}          
 gunluk_sinyaller = {}       
@@ -131,6 +131,9 @@ def check_telegram_commands():
 
                     elif text in ["/ping", "/pingms"]:
                         send_telegram_msg(f"⚡ *Gecikme Süresi:* `{latency:.0f} ms`")
+
+                    elif text == "/test":
+                        process_symbol("ISPC", force_send=True)
 
                     elif text in ["/status", "/durum"]:
                         status_badge = "🟢 AKTİF / TARANIYOR" if is_running else "🔴 PASİF / BEKLEMEDE"
@@ -233,7 +236,7 @@ def get_penny_stocks():
         return [s for s in symbols if isinstance(s, str) and len(s) <= 4]
     except Exception as e:
         print(f"Liste alinirken hata: {e}")
-        return []
+        return ["ISPC", "ATER", "GMEX", "BNC", "TWG", "WYHG", "OLB"]
 
 
 # ==========================================
@@ -262,6 +265,9 @@ def calculate_dynamic_targets(df, last_price):
         return last_price * 1.07, 7.0, last_price * 1.25, 25.0
 
 def detect_breakout_type(df, vol_ratio, resistance, last_price):
+    if len(df) < 3:
+        return "Gerçek Kırılım 1", IMAGE_URLS["GERCEK_1"]
+
     c_curr = df['Close'].iloc[-1]
     o_curr = df['Open'].iloc[-1]
     
@@ -269,13 +275,13 @@ def detect_breakout_type(df, vol_ratio, resistance, last_price):
     o_prev1 = df['Open'].iloc[-2]
     l_prev1 = df['Low'].iloc[-2]
     
-    c_prev2 = df['Close'].iloc[-3]
+    c_prev2 = df['Close'].iloc[-3] if len(df) >= 3 else c_prev1
 
     if c_prev2 > resistance and c_prev1 < o_prev1 and c_curr > o_curr:
         return "Onaylı Kırılım", IMAGE_URLS["ONAYLI"]
     elif c_prev1 < o_prev1 and c_curr > o_curr and l_prev1 <= resistance:
         return "Gerçek Kırılım 2", IMAGE_URLS["GERCEK_2"]
-    elif 1.8 <= vol_ratio < 2.5 and c_curr > o_curr:
+    elif 1.2 <= vol_ratio < 2.5 and c_curr > o_curr:
         return "Yavaş Hacimli Kırılım", IMAGE_URLS["YAVAS_HACIM"]
     else:
         return "Gerçek Kırılım 1", IMAGE_URLS["GERCEK_1"]
@@ -284,59 +290,62 @@ def detect_breakout_type(df, vol_ratio, resistance, last_price):
 # ==========================================
 # 6. HİSSE BAZLI CANLI FİLTRELEME & ALARM
 # ==========================================
-def process_symbol(symbol):
+def process_symbol(symbol, force_send=False):
     try:
         ticker = yf.Ticker(symbol)
         df = ticker.history(period="1d", interval="1m")
 
-        if df.empty or len(df) < 20:
-            return
-
-        last_price = df['Close'].iloc[-1]
-
-        if last_price >= MAX_PRICE_LIMIT or last_price <= 0.05:
-            return
-
-        last_volume = df['Volume'].iloc[-1]
-        open_price = df['Open'].iloc[-1]
-        
-        resistance = df['High'][:-1].max()
-        avg_volume = df['Volume'][:-1].mean()
-
-        if avg_volume < 1000:
-            return
-
-        distance_to_resistance = (resistance - last_price) / resistance if resistance > 0 else 1.0
-        vol_ratio = last_volume / avg_volume if avg_volume > 0 else 1.0
-
-        if last_price <= resistance and distance_to_resistance <= 0.015 and last_price > open_price:
-            if vol_ratio >= 1.8:
-                kirilim_adi, img_url = detect_breakout_type(df, vol_ratio, resistance, last_price)
-            else:
+        if df.empty:
+            df = ticker.history(period="5d", interval="1m")
+            if df.empty:
                 return
 
-            if symbol not in bildirilenler or (time.time() - bildirilenler[symbol]) > 60:
-                tight_stop = last_price * 0.98    
-                tp1, tp1_pct, tp2, tp2_pct = calculate_dynamic_targets(df, last_price)
-                tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
+        last_price = df['Close'].iloc[-1]
+        open_price = df['Open'].iloc[-1]
+        last_volume = df['Volume'].iloc[-1]
+        
+        resistance = df['High'][:-1].max() if len(df) > 1 else df['High'].max()
+        avg_volume = df['Volume'][:-1].mean() if len(df) > 1 else last_volume
 
-                msg = (
-                    f"🚨 *NASDAQ SON DAKİKA: #{symbol}*\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━\n\n"
-                    f"📊 *Kırılım Tipi:* `🟢 {kirilim_adi}`\n"
-                    f"⚡ *Hacim Gücü:* `{vol_ratio:.1f}x Katı` (Hacim Patlaması)\n\n"
-                    f"💵 *Giriş Fiyatı:* `${last_price:.2f}`\n"
-                    f"🛡️ *Stop-Loss (-%2.0):* `${tight_stop:.2f}`\n\n"
-                    f"🎯 *1. Kademe Satış (+%{tp1_pct:.1f}):* `${tp1:.2f}`\n"
-                    f"🎯 *2. Kademe Satış (+%{tp2_pct:.1f}):* `${tp2:.2f}`\n\n"
-                    f"📈 [TradingView'de Grafiği İncele]({tv_url})"
-                )
-                
-                send_telegram_side_photo(img_url, msg)
-                bildirilenler[symbol] = time.time()
-                
-                if symbol not in gunluk_sinyaller:
-                    gunluk_sinyaller[symbol] = {'entry': last_price}
+        if not force_send:
+            if last_price >= MAX_PRICE_LIMIT or last_price <= 0.05:
+                return
+
+            distance_to_resistance = (resistance - last_price) / resistance if resistance > 0 else 0.0
+            vol_ratio = last_volume / avg_volume if avg_volume > 0 else 1.0
+
+            # Kırılım veya kırılıma yakınlaşma mantığı
+            is_near_breakout = (distance_to_resistance <= 0.025 and last_price >= open_price)
+            is_volume_spike = (vol_ratio >= 1.2)
+
+            if not (is_near_breakout or is_volume_spike):
+                return
+        else:
+            vol_ratio = 2.8
+
+        if force_send or symbol not in bildirilenler or (time.time() - bildirilenler[symbol]) > 180:
+            kirilim_adi, img_url = detect_breakout_type(df, vol_ratio, resistance, last_price)
+            tight_stop = last_price * 0.98    
+            tp1, tp1_pct, tp2, tp2_pct = calculate_dynamic_targets(df, last_price)
+            tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
+
+            msg = (
+                f"🚨 *NASDAQ SON DAKİKA: #{symbol}*\n"
+                f"━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"📊 *Kırılım Tipi:* `🟢 {kirilim_adi}`\n"
+                f"⚡ *Hacim Gücü:* `{vol_ratio:.1f}x Katı` (Hacim Patlaması)\n\n"
+                f"💵 *Giriş Fiyatı:* `${last_price:.2f}`\n"
+                f"🛡️ *Stop-Loss (-%2.0):* `${tight_stop:.2f}`\n\n"
+                f"🎯 *1. Kademe Satış (+%{tp1_pct:.1f}):* `${tp1:.2f}`\n"
+                f"🎯 *2. Kademe Satış (+%{tp2_pct:.1f}):* `${tp2:.2f}`\n\n"
+                f"📈 [TradingView'de Grafiği İncele]({tv_url})"
+            )
+            
+            send_telegram_side_photo(img_url, msg)
+            bildirilenler[symbol] = time.time()
+            
+            if symbol not in gunluk_sinyaller:
+                gunluk_sinyaller[symbol] = {'entry': last_price}
     except Exception:
         pass
 
@@ -462,7 +471,7 @@ def canli_kesintisiz_tarama():
     if not symbols:
         return
 
-    with ThreadPoolExecutor(max_workers=10) as executor:
+    with ThreadPoolExecutor(max_workers=15) as executor:
         executor.map(process_symbol, symbols)
 
 def start_scanner_loop():
@@ -485,7 +494,7 @@ def start_scanner_loop():
         except Exception as e:
             print(f"Tarama döngüsü hatası: {e}")
         
-        time.sleep(300)
+        time.sleep(15)
 
 def telegram_komut_dinleme_loop():
     while True:
