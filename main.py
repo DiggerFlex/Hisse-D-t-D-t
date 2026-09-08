@@ -3,7 +3,6 @@ import datetime
 import threading
 import os
 import requests
-import feedparser
 from flask import Flask
 
 # ==========================================
@@ -13,7 +12,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "⚡ FINNHUB REALTIME TERMINAL ACTIVE ⚡"
+    return "⚡ NASDAQ SCANNER ACTIVE ⚡"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -32,10 +31,8 @@ FINNHUB_API_KEY = "BURAYA_FINNHUB_API_KEY_YAZIN"
 
 MAX_PRICE_LIMIT = 3.00
 
-# Tekrarlı mesajı engellemek için son bildiri fiyatı tutulur
 son_bildirilen_fiyat = {}    
 gunluk_sinyaller = {}       
-gonderilen_haberler = set() 
 rapor_gonderildi_bugun = False
 last_update_id = 0          
 is_running = True
@@ -54,9 +51,11 @@ def send_telegram_msg(message):
         "disable_web_page_preview": True
     }
     try:
-        requests.post(url, json=payload, timeout=10)
+        res = requests.post(url, json=payload, timeout=10).json()
+        return res
     except Exception as e:
         print(f"Telegram Baglanti Hatasi: {e}")
+        return None
 
 def edit_telegram_msg(message_id, new_text):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/editMessageText"
@@ -113,7 +112,7 @@ def check_telegram_commands():
                             f"💵 *Max Fiyat:* `${MAX_PRICE_LIMIT:.2f}`\n"
                             f"📊 *Günlük Sinyal:* `{len(gunluk_sinyaller)} Adet`\n"
                             f"⚡ *Gecikme:* `{latency:.0f} ms`\n"
-                            f"🚀 *Veri Kaynağı:* `Finnhub Real-Time API`"
+                            f"🚀 *Veri Kaynağı:* `Finnhub API`"
                         )
                         send_telegram_msg(durum_msg)
 
@@ -143,20 +142,26 @@ def check_telegram_commands():
 
                     elif text == "/render":
                         if RENDER_DEPLOY_HOOK_URL:
-                            init_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-                            init_res = requests.post(init_url, json={
-                                "chat_id": TELEGRAM_CHAT_ID,
-                                "text": "🌀 *Sisteme Render Atılıyor...*",
-                                "parse_mode": "Markdown"
-                            }).json()
-                            
-                            msg_id = init_res.get("result", {}).get("message_id")
+                            res_msg = send_telegram_msg("🌀 *Sisteme Render Atılıyor...*\n_Deploy tetiklendi, bekleniyor..._")
+                            msg_id = res_msg.get("result", {}).get("message_id") if res_msg else None
                             
                             try:
                                 requests.post(RENDER_DEPLOY_HOOK_URL, timeout=10)
-                                time.sleep(2)
                                 if msg_id:
-                                    edit_telegram_msg(msg_id, "🚀 *Sistem Yeniden Başlatıldı!*")
+                                    frames = [
+                                        "⏳ *Deploy Ediliyor...* `[⠋]`",
+                                        "⏳ *Deploy Ediliyor...* `[⠙]`",
+                                        "⏳ *Deploy Ediliyor...* `[⠹]`",
+                                        "⏳ *Deploy Ediliyor...* `[⠸]`",
+                                        "⏳ *Deploy Ediliyor...* `[⠼]`",
+                                        "⏳ *Deploy Ediliyor...* `[⠴]`",
+                                        "⏳ *Deploy Ediliyor...* `[⠦]`",
+                                        "⏳ *Deploy Ediliyor...* `[⠧]`"
+                                    ]
+                                    for frame in frames:
+                                        edit_telegram_msg(msg_id, frame)
+                                        time.sleep(0.5)
+                                    edit_telegram_msg(msg_id, "🚀 *Render Sunucusu Başarıyla Yeniden Başlatıldı!*")
                             except Exception as e:
                                 if msg_id:
                                     edit_telegram_msg(msg_id, f"⚠️ *Deploy Hatası:* {e}")
@@ -180,7 +185,7 @@ def check_telegram_commands():
 
 
 # ==========================================
-# 4. FINNHUB ANLIK CANLI SİNYAL TARAMA
+# 4. FINNHUB CANLI SİNYAL TARAMA
 # ==========================================
 def get_quote_finnhub(symbol):
     try:
@@ -208,16 +213,12 @@ def process_symbol(symbol):
     prev_close = data["prev_close"]
     high_price = data["high"]
 
-    # Fiyat sınır kontrolleri
     if last_price >= MAX_PRICE_LIMIT or last_price <= 0.05 or prev_close <= 0:
         return
 
     pct_change = ((last_price - prev_close) / prev_close) * 100
 
-    # Temel kriter: En az %2 artış
     if pct_change >= 2.0:
-        # TEKRAR ENGELLEME FİLTRESİ:
-        # Hisse daha önce hiç atılmadıysa VEYA fiyatı son atılan seviyenin en az %3 yukarısına kırıldıysa at.
         if symbol not in son_bildirilen_fiyat or last_price >= (son_bildirilen_fiyat[symbol] * 1.03):
             tight_stop = last_price * 0.95
             tp1 = last_price * 1.10
@@ -238,8 +239,6 @@ def process_symbol(symbol):
             )
             
             send_telegram_msg(msg)
-            
-            # Son bildirilen fiyatı güncelle
             son_bildirilen_fiyat[symbol] = last_price
             
             if symbol not in gunluk_sinyaller:
@@ -247,61 +246,15 @@ def process_symbol(symbol):
 
 
 # ==========================================
-# 5. TRUMP VE HABER MODÜLÜ
-# ==========================================
-def kritik_piyasa_etkisi_analiz_et(metin):
-    metin_lower = metin.lower()
-    olumsuz_kelimeler = ["war", "strike", "attack", "sanction", "tariff", "tariffs", "threat", "china", "russia", "ban"]
-
-    if any(word in metin_lower for word in olumsuz_kelimeler):
-        return "🚨 *Haber Etkisi:* `🔴 NEGATİF`"
-    else:
-        return "🚀 *Haber Etkisi:* `🟢 POZİTİF`"
-
-def trump_ve_piyasa_haberleri_kontrol_et():
-    global gonderilen_haberler
-    rss_url = "https://news.google.com/rss/search?q=Trump+(war+OR+tariff+OR+sanction+OR+attack+OR+China+OR+strike)&hl=en-US&gl=US&ceid=US:en"
-    kritik_kelimeler = ["war", "tariff", "tariffs", "sanction", "attack", "strike", "china", "russia", "military", "missile", "threat", "ban"]
-    
-    try:
-        feed = feedparser.parse(rss_url)
-        
-        for entry in feed.entries[:5]:
-            haber_id = entry.title
-            baslik_lower = entry.title.lower()
-            
-            if haber_id in gonderilen_haberler:
-                continue
-                
-            if any(word in baslik_lower for word in kritik_kelimeler):
-                etki = kritik_piyasa_etkisi_analiz_et(entry.title)
-                msg = (
-                    f"🌐 *KRİTİK HABER BÜLTENİ*\n"
-                    f"━━━━━━━━━━━━━━━━━━━━━\n\n"
-                    f"📌 *Açıklama:* _{entry.title}_\n\n"
-                    f"{etki}"
-                )
-                send_telegram_msg(msg)
-                gonderilen_haberler.add(haber_id)
-    except Exception as e:
-        print(f"Haber akisi hatasi: {e}")
-
-def haber_tarama_loop():
-    while True:
-        trump_ve_piyasa_haberleri_kontrol_et()
-        time.sleep(3600)
-
-
-# ==========================================
-# 6. GÜN SONU PERFORMANS RAPORU
+# 5. GÜN SONU PERFORMANS RAPORU
 # ==========================================
 def gun_sonu_raporu_gonder():
     global gunluk_sinyaller, son_bildirilen_fiyat
     if not gunluk_sinyaller:
-        send_telegram_msg("PARA KAZANMA SANATI\n📊 **GÜNÜN İŞLEMLERİ** 📊\n\n`Bugün henüz sinyal oluşmadı.`")
+        send_telegram_msg("📊 **GÜNÜN İŞLEMLERİ**\n\n`Bugün henüz sinyal oluşmadı.`")
         return
 
-    rapor = "PARA KAZANMA SANATI\n📊 **GÜNÜN İŞLEMLERİ** 📊\n"
+    rapor = "📊 **GÜNÜN İŞLEMLERİ**\n"
     toplam_kar = 0
     basarili_sayisi = 0
 
@@ -326,14 +279,12 @@ def gun_sonu_raporu_gonder():
         rapor += f"\n📈 **Toplam Getiri:** `%{toplam_kar:.2f}`"
     
     send_telegram_msg(rapor)
-    
-    # Gece yarısı hafızayı temizle
     gunluk_sinyaller.clear()
     son_bildirilen_fiyat.clear()
 
 
 # ==========================================
-# 7. CANLI TARAMA VE PROGRAM BAŞLATICI
+# 6. CANLI TARAMA VE PROGRAM BAŞLATICI
 # ==========================================
 WATCHLIST = ["ARBE", "CDTG", "BJDX", "WDH", "BBAI", "SOUN", "GNS", "NVOS", "TNSL", "MULN", "KOSS", "VISL", "VERB", "SNOA", "EBON"]
 
@@ -360,10 +311,10 @@ def canli_kesintisiz_tarama():
 
 def start_scanner_loop():
     welcome_msg = (
-        "⚡ *NASDAQ SCANNER REALTIME ONLINE* ⚡\n"
+        "⚡ *NASDAQ SCANNER ACTIVE* ⚡\n"
         "━━━━━━━━━━━━━━━━━━━━━\n\n"
         "🎯 *Fiyat Limiti:* `$3.00`\n"
-        "🚀 *Altyapı:* `Finnhub Real-Time API`\n"
+        "🚀 *Altyapı:* `Finnhub API`\n"
         "_Piyasa taranıyor..._ 🚀"
     )
     send_telegram_msg(welcome_msg)
@@ -388,7 +339,6 @@ def telegram_komut_dinleme_loop():
         time.sleep(2)
 
 if __name__ == '__main__':
-    threading.Thread(target=haber_tarama_loop, daemon=True).start()
     threading.Thread(target=start_scanner_loop, daemon=True).start()
     threading.Thread(target=telegram_komut_dinleme_loop, daemon=True).start()
     run_flask()
