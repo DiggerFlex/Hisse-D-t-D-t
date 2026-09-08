@@ -30,6 +30,7 @@ def run_flask():
 # ==========================================
 TELEGRAM_BOT_TOKEN = "8750813780:AAHvWiUdKO6bzxBQHFx4GQnV9CHztjQaOH0"
 TELEGRAM_CHAT_ID = "7743041008"
+POLYGON_API_KEY = "2MCQinSzcjSGpa2NtrgML6xHrYCK4tLZ"
 RENDER_DEPLOY_HOOK_URL = "https://api.render.com/deploy/srv-daemtan40ujc73ft425g?key=o1ghEoCwW10"
 MAX_PRICE_LIMIT = 3.00  # Varsayılan limit 3.00 olarak ayarlandı
 
