@@ -197,7 +197,7 @@ def check_telegram_commands():
 
 
 # ==========================================
-# 4. BORSADAN HİSSE LİSTESİ ÇEKME
+# 4. BORSADAN TUM HİSSE LİSTESİNİ ÇEKME
 # ==========================================
 def get_penny_stocks():
     try:
@@ -207,7 +207,7 @@ def get_penny_stocks():
         return [s for s in symbols if isinstance(s, str) and len(s) <= 4]
     except Exception as e:
         print(f"Liste alinirken hata: {e}")
-        return ["ISPC", "ATER", "GMEX", "BNC", "TWG", "WYHG", "OLB"]
+        return [] # Sabit 7 hisse yerine bos liste dondurur, hatada bekler
 
 
 # ==========================================
@@ -285,11 +285,15 @@ def process_symbol(symbol, force_send=False):
             distance_to_resistance = (resistance - last_price) / resistance if resistance > 0 else 0.0
             vol_ratio = last_volume / avg_volume if avg_volume > 0 else 1.0
 
-            # Kırılım öncesi sıkışma veya hacim patlaması tespiti
-            is_near_breakout = (distance_to_resistance <= 0.025 and last_price >= open_price)
-            is_volume_spike = (vol_ratio >= 1.2)
+            # --- SIKIŞMA VE SADECE SIKIŞAN AŞAMA (KIRILIM ÖNCESİ) ---
+            # Fiyat dirence %1.5 yakında mı VE yeşil mum mu?
+            is_near_breakout = (0 <= distance_to_resistance <= 0.015) and (last_price >= open_price)
+            
+            # Hacim artışı en az 1.8 katı mı?
+            is_volume_spike = (vol_ratio >= 1.8)
 
-            if not (is_near_breakout or is_volume_spike):
+            # İki şart da aynı anda sağlanmalı (AND)
+            if not (is_near_breakout and is_volume_spike):
                 return
         else:
             vol_ratio = 2.8
@@ -450,7 +454,7 @@ def start_scanner_loop():
         "⚡ *NASDAQ SCANNER TERMINAL ONLINE* ⚡\n"
         "━━━━━━━━━━━━━━━━━━━━━\n\n"
         "⚡ *Tarama Motoru:* `Aktif (1m Canlı Veri)`\n"
-        "🎯 *Fiyat Limiti:* `$3.50 ve Altı`\n"
+        "🎯 *Fiyat Limiti:* `$5.00 ve Altı`\n"
         "📊 *Hacim Filtresi:* `1.8x ve Üzeri`\n\n"
         "_Piyasa taranıyor, fırsatlar bekleniyor..._ 🚀"
     )
