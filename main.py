@@ -304,7 +304,9 @@ def process_symbol(symbol, force_send=False):
         kirilim_adi = detect_breakout_type(df, vol_ratio, resistance, last_price)
         tight_stop = last_price * 0.98    
         tp1, tp1_pct, tp2, tp2_pct = calculate_dynamic_targets(df, last_price)
-        tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
+        
+        # 🎯 BURAYI BU ŞEKİLDE GÜNCELLE:
+        tv_url = f"https://www.tradingview.com/chart/?symbol={symbol}"
 
         msg = (
             f"🚨 *SİNYAL: #{symbol}*\n"
