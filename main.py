@@ -98,14 +98,14 @@ def check_telegram_commands():
                     if text == "/stop":
                         if is_running:
                             is_running = False
-                            send_telegram_msg("🔴 *TARAMA DURDURULDU*\n_Tarama donduruldu._")
+                            send_telegram_msg("🔴 *BOT DURDURULDU*\n_Tarama donduruldu._")
                         else:
                             send_telegram_msg("⚠️ _Tarama zaten pasif._")
 
                     elif text == "/start":
                         if not is_running:
                             is_running = True
-                            send_telegram_msg("🟢 *TARAMA DEVREDE*\n_Piyasa taranıyor..._")
+                            send_telegram_msg("🟢 *BOT DEVREDE*\n_Piyasa taranıyor..._")
                         else:
                             send_telegram_msg("⚠️ _Tarama zaten aktif._")
 
@@ -156,7 +156,7 @@ def check_telegram_commands():
                             init_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
                             init_res = requests.post(init_url, json={
                                 "chat_id": TELEGRAM_CHAT_ID,
-                                "text": "🌀 *Render Başlatıldı...*",
+                                "text": "🌀 *Render Başlatılıyor...*",
                                 "parse_mode": "Markdown"
                             }).json()
                             msg_id = init_res.get("result", {}).get("message_id")
@@ -176,6 +176,13 @@ def check_telegram_commands():
                                 
                                 for kare in animasyon_kareleri:
                                     time.sleep(1.2)
+                                    if msg_id:
+                                        edit_telegram_msg(msg_id, kare)
+                            except Exception as e:
+                                if msg_id:
+                                    edit_telegram_msg(msg_id, f"⚠️ *Hata:* {e}")
+                        else:
+                            send_telegram_msg("⚠️ URL eksik.")
 
                     elif text.startswith("/limit"):
                         parts = text.split()
@@ -420,25 +427,20 @@ def piyasa_zaman_kontrolu():
     global rapor_gonderildi_bugun, acilis_bildirildi_bugun, son_gun_str
     
     try:
-        # ABD Doğu Yakası (New York / NASDAQ) saati baz alınır
         ny_now = datetime.datetime.now(ZoneInfo("America/New_York"))
         bugun_str = ny_now.strftime("%Y-%m-%d")
         
-        # Yeni güne geçildiyse bayrakları sıfırla
         if son_gun_str != bugun_str:
             son_gun_str = bugun_str
             rapor_gonderildi_bugun = False
             acilis_bildirildi_bugun = False
 
-        # Hafta içi kontrolü (Pazartesi=0, Cuma=4)
         if ny_now.weekday() < 5:
-            # 1. NASDAQ AÇILIŞI (09:30 NY Saati)
             if ny_now.hour == 9 and ny_now.minute >= 30:
                 if not acilis_bildirildi_bugun:
                     send_telegram_msg("🔔 *NASDAQ AÇILDI!*\n_Piyasa işlemleri başladı, tarama aktif._")
                     acilis_bildirildi_bugun = True
 
-            # 2. NASDAQ KAPANIŞI / GÜN SONU RAPORU (16:00 NY Saati)
             if ny_now.hour >= 16:
                 if not rapor_gonderildi_bugun:
                     send_telegram_msg("🔔 *NASDAQ KAPANDI!*\n_Gün sonu raporu hazırlanıyor..._")
@@ -463,7 +465,7 @@ def canli_kesintisiz_tarama():
 
 def start_scanner_loop():
     welcome_msg = (
-        "⚡ *NASDAQ DETECTİVE ONLINE* ⚡\n"
+        "⚡ *NASDAQ TERMINAL ONLINE* ⚡\n"
         "━━━━━━━━━━━━━━━━━━━━━\n\n"
         "🎯 *Limit:* `$3.00 ve Altı`\n"
         "📊 *Kapsam:* `Tüm NASDAQ`\n\n"
