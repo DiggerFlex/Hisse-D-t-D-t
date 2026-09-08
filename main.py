@@ -39,6 +39,7 @@ gonderilen_haberler = set()
 rapor_gonderildi_bugun = False
 last_update_id = 0          
 is_running = True
+last_heartbeat_time = 0  # 5 dakikalık bildirim için zaman takibi
 
 
 # ==========================================
@@ -207,7 +208,7 @@ def get_penny_stocks():
         return [s for s in symbols if isinstance(s, str) and len(s) <= 4]
     except Exception as e:
         print(f"Liste alinirken hata: {e}")
-        return [] # Sabit 7 hisse yerine bos liste dondurur, hatada bekler
+        return []
 
 
 # ==========================================
@@ -285,14 +286,10 @@ def process_symbol(symbol, force_send=False):
             distance_to_resistance = (resistance - last_price) / resistance if resistance > 0 else 0.0
             vol_ratio = last_volume / avg_volume if avg_volume > 0 else 1.0
 
-            # --- SIKIŞMA VE SADECE SIKIŞAN AŞAMA (KIRILIM ÖNCESİ) ---
-            # Fiyat dirence %1.5 yakında mı VE yeşil mum mu?
+            # Kırılım öncesi sıkışma tespiti (Direnç yakınlığı %1.5 + Yeşil mum + Hacim 1.8x)
             is_near_breakout = (0 <= distance_to_resistance <= 0.015) and (last_price >= open_price)
-            
-            # Hacim artışı en az 1.8 katı mı?
             is_volume_spike = (vol_ratio >= 1.8)
 
-            # İki şart da aynı anda sağlanmalı (AND)
             if not (is_near_breakout and is_volume_spike):
                 return
         else:
@@ -432,7 +429,14 @@ def gun_sonu_raporu_gonder():
 # 9. CANLI TARAMA VE PROGRAM BAŞLATICI
 # ==========================================
 def canli_kesintisiz_tarama():
-    global rapor_gonderildi_bugun
+    global rapor_gonderildi_bugun, last_heartbeat_time
+
+    # --- HER 5 DAKİKADA BİR TARA BİLDİRİMİ GÖNDERME MANTIĞI ---
+    now_ts = time.time()
+    if now_ts - last_heartbeat_time >= 300: # 300 saniye = 5 dakika
+        su_an = (datetime.datetime.utcnow() + datetime.timedelta(hours=3)).strftime("%H:%M")
+        send_telegram_msg(f"🔎 *Piyasa taranıyor...* `[{su_an}]`\n_NASDAQ hisseleri anlık taranmaya devam ediyor._")
+        last_heartbeat_time = now_ts
 
     now = datetime.datetime.utcnow() + datetime.timedelta(hours=3)
     if now.hour == 23 and now.minute == 0:
