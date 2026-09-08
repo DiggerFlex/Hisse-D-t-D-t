@@ -33,7 +33,7 @@ TELEGRAM_CHAT_ID = "7743041008"
 RENDER_DEPLOY_HOOK_URL = "https://api.render.com/deploy/srv-daemtan40ujc73ft425g?key=o1ghEoCwW10"
 MAX_PRICE_LIMIT = 3.00
 
-bildirilenler = {}        
+bildirilenler = set()       # Tekrar spam atmaması için set yapıldı (Günlük sıfırlanır)
 gunluk_sinyaller = {}       
 gonderilen_haberler = set() 
 rapor_gonderildi_bugun = False
@@ -236,10 +236,13 @@ def detect_breakout_type(df, vol_ratio, resistance, last_price):
 
 
 # ==========================================
-# 6. CANLI TARAMA VE ALARM
+# 6. CANLI TARAMA VE ALARM (TEK SEFERLİK KONTROL)
 # ==========================================
 def process_symbol(symbol, force_send=False):
     try:
+        if not force_send and symbol in bildirilenler:
+            return  # Daha önce atıldıysa anında geç, asla bir daha spam yapma
+
         ticker = yf.Ticker(symbol)
         df = ticker.history(period="1d", interval="1m", prepost=True)
 
@@ -270,7 +273,7 @@ def process_symbol(symbol, force_send=False):
         else:
             vol_ratio = 3.0
 
-        if force_send or symbol not in bildirilenler or (time.time() - bildirilenler[symbol]) > 180:
+        if force_send or symbol not in bildirilenler:
             kirilim_adi = detect_breakout_type(df, vol_ratio, resistance, last_price)
             tight_stop = last_price * 0.98    
             tp1, tp1_pct, tp2, tp2_pct = calculate_dynamic_targets(df, last_price)
@@ -289,7 +292,7 @@ def process_symbol(symbol, force_send=False):
             )
             
             send_telegram_msg(msg)
-            bildirilenler[symbol] = time.time()
+            bildirilenler.add(symbol) # Bir daha atılmaması için sete eklendi
             
             if symbol not in gunluk_sinyaller:
                 gunluk_sinyaller[symbol] = {'entry': last_price}
@@ -355,10 +358,10 @@ def haber_tarama_loop():
 
 
 # ==========================================
-# 8. GÜN SONU RAPORU
+# 8. GÜN SONU RAPORU VE LİSTE SIFIRLAMA
 # ==========================================
 def gun_sonu_raporu_gonder():
-    global gunluk_sinyaller
+    global gunluk_sinyaller, bildirilenler
     if not gunluk_sinyaller:
         send_telegram_msg("📊 *GÜNÜN İŞLEMLERİ*\n\n`Bugün sinyal oluşmadı.`")
         return
@@ -389,6 +392,7 @@ def gun_sonu_raporu_gonder():
     
     send_telegram_msg(rapor)
     gunluk_sinyaller.clear()
+    bildirilenler.clear() # Yeni gün için bildirilenler listesi temizlenir
 
 
 # ==========================================
