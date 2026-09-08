@@ -3,8 +3,11 @@ import datetime
 import threading
 import os
 import requests
-import pandas as pd
+import feedparser
 import yfinance as yf
+import pandas as pd
+import numpy as np
+from dateutil import parser
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask
 
@@ -23,24 +26,23 @@ def run_flask():
 
 
 # ==========================================
-# 2. AYARLAR VE TELEGRAM BİLGİLERİN
+# 2. AYARLAR VE DİNAMİK DEĞİŞKENLER
 # ==========================================
 TELEGRAM_BOT_TOKEN = "8750813780:AAHvWiUdKO6bzxBQHFx4GQnV9CHztjQaOH0"
 TELEGRAM_CHAT_ID = "7743041008"
 RENDER_DEPLOY_HOOK_URL = "https://api.render.com/deploy/srv-daemtan40ujc73ft425g?key=o1ghEoCwW10"
+MAX_PRICE_LIMIT = 3.00
 
-MAX_PRICE_LIMIT = 5.00
-BATCH_SIZE = 100  # Yahoo IP ban yememek için 100'erli gruplar halinde tarar
-SLEEP_BETWEEN_BATCHES = 1.5
-
-bildirilenler = {}
-gunluk_sinyaller = {}
-last_update_id = 0
+bildirilenler = {}        
+gunluk_sinyaller = {}       
+gonderilen_haberler = set() 
+rapor_gonderildi_bugun = False
+last_update_id = 0         
 is_running = True
 
 
 # ==========================================
-# 3. TELEGRAM İLETİŞİM FONKSİYONLARI (SADECE METİN)
+# 3. TELEGRAM İLETİŞİM FONKSİYONLARI
 # ==========================================
 def send_telegram_msg(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -87,41 +89,40 @@ def check_telegram_commands():
                     if text == "/stop":
                         if is_running:
                             is_running = False
-                            send_telegram_msg("🔴 *BOT DURDURULDU*\n_Tarama donduruldu. Yeni komut bekleniyor..._")
+                            send_telegram_msg("🔴 *BOT DURDURULDU*\n_Tarama donduruldu._")
                         else:
-                            send_telegram_msg("⚠️ _Tarama zaten pasif durumda._")
+                            send_telegram_msg("⚠️ _Tarama zaten pasif._")
 
                     elif text == "/start":
                         if not is_running:
                             is_running = True
-                            send_telegram_msg("🟢 *BOT DEVREDE*\n_Motorlar çalıştırıldı. Piyasa taranıyor..._")
+                            send_telegram_msg("🟢 *BOT DEVREDE*\n_Piyasa taranıyor..._")
                         else:
-                            send_telegram_msg("⚠️ _Tarama zaten aktif olarak çalışıyor._")
+                            send_telegram_msg("⚠️ _Tarama zaten aktif._")
 
                     elif text in ["/ping", "/pingms"]:
-                        send_telegram_msg(f"⚡ *Gecikme Süresi:* `{latency:.0f} ms`")
+                        send_telegram_msg(f"⚡ *Gecikme:* `{latency:.0f} ms`")
 
                     elif text == "/test":
                         process_symbol("ISPC", force_send=True)
 
                     elif text in ["/status", "/durum"]:
-                        status_badge = "🟢 AKTİF / TARANIYOR" if is_running else "🔴 PASİF / BEKLEMEDE"
+                        status_badge = "🟢 AKTİF" if is_running else "🔴 PASİF"
                         durum_msg = (
-                            f"🤖 *NASDAQ SCANNER TERMINAL DURUMU* 🤖\n"
+                            f"🤖 *TERMINAL DURUMU*\n"
                             f"━━━━━━━━━━━━━━━━━━━━━\n\n"
                             f"🌐 *Sistem:* {status_badge}\n"
                             f"💵 *Max Fiyat:* `${MAX_PRICE_LIMIT:.2f}`\n"
-                            f"📊 *Günlük Sinyal:* `{len(gunluk_sinyaller)} Adet`\n"
-                            f"⚡ *Gecikme / Delay:* `{latency:.0f} ms`\n"
-                            f"🔒 *Server:* `Render (Active Hub)`"
+                            f"📊 *Sinyal:* `{len(gunluk_sinyaller)}`\n"
+                            f"⚡ *Gecikme:* `{latency:.0f} ms`"
                         )
                         send_telegram_msg(durum_msg)
 
                     elif text in ["/stats", "/ozet"]:
                         if not gunluk_sinyaller:
-                            send_telegram_msg("📈 *ANLIK PORTFÖY:* _Bugün henüz sinyal tetiklenmedi._")
+                            send_telegram_msg("📈 *PORTFÖY:* _Bugün henüz sinyal yok._")
                         else:
-                            ozet_msg = f"📊 *BUGÜNKÜ SİNYAL LİSTESİ ({len(gunluk_sinyaller)} Adet):*\n"
+                            ozet_msg = f"📊 *GÜNLÜK SİNYALLER ({len(gunluk_sinyaller)}):*\n"
                             ozet_msg += "━━━━━━━━━━━━━━━━━━━━━\n"
                             for sym in gunluk_sinyaller.keys():
                                 ozet_msg += f"• *#{sym}* ➔ Giriş: `${gunluk_sinyaller[sym]['entry']:.2f}`\n"
@@ -129,15 +130,15 @@ def check_telegram_commands():
 
                     elif text in ["/help", "/yardim"]:
                         yardim_msg = (
-                            "⚡ *NASDAQ SCANNER TERMINAL KOMUTLARI*\n"
+                            "⚡ *KOMUTLAR*\n"
                             "━━━━━━━━━━━━━━━━━━━━━\n\n"
-                            "▶️ `/start` - Scannerı başlatır.\n"
-                            "⏸️ `/stop` - Scannerı durdurur.\n"
-                            "⚡ `/ping` - Sunucu gecikmesini ölçer.\n"
-                            "🖥️ `/status` - Sistem durumunu gösterir.\n"
-                            "📊 `/stats` - Günün sinyallerini listeler.\n"
-                            "⚙️ `/limit [değer]` - Üst fiyat limitini ayarlar.\n"
-                            "🔄 `/render` - Sunucuyu yeniden başlatır."
+                            "▶️ `/start` - Başlatır\n"
+                            "⏸️ `/stop` - Durdurur\n"
+                            "⚡ `/ping` - Gecikme ölçer\n"
+                            "🖥️ `/status` - Durum\n"
+                            "📊 `/stats` - Sinyaller\n"
+                            "⚙️ `/limit [değer]` - Limit ayarlar\n"
+                            "🔄 `/render` - Yeniden başlatır"
                         )
                         send_telegram_msg(yardim_msg)
 
@@ -146,35 +147,19 @@ def check_telegram_commands():
                             init_url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
                             init_res = requests.post(init_url, json={
                                 "chat_id": TELEGRAM_CHAT_ID,
-                                "text": "🌀 *Sisteme Render Atılıyor...*",
+                                "text": "🌀 *Render Başlatıldı...*",
                                 "parse_mode": "Markdown"
                             }).json()
-                            
                             msg_id = init_res.get("result", {}).get("message_id")
-                            
                             try:
                                 requests.post(RENDER_DEPLOY_HOOK_URL, timeout=10)
-                                
-                                animasyon_kareleri = [
-                                    "🔄 *Render Bağlantısı Kuruluyor...* ⏳",
-                                    "🔄 *Render Bağlantısı Kuruluyor...*\n\n📡 _Sunucuya erişildi..._",
-                                    "⚙️ *Sistem Çekirdeği Yükleniyor...*\n\n[▓░░░░░░░░░] *%10* — _Bağlantı kuruldu_",
-                                    "⚙️ *Mumlar Yakılıyor...*\n\n[▓▓▓░░░░░░░] *%30* — _Hisseler tarandı_",
-                                    "🔥 *Midas Motoru Aktifleştiriliyor...*\n\n[▓▓▓▓▓░░░░░] *%50* — _Para kazanma modu devrede_ 💵",
-                                    "📊 *NASDAQ Veri Akışı Bağlanıyor...*\n\n[▓▓▓▓▓▓▓░░░] *%70* — _Nasdaq taranıyor_",
-                                    "🛡️ *Risk Kontrolleri Yapılıyor...*\n\n[▓▓▓▓▓▓▓▓▓░] *%90* — _Best Scanner created by Dipper_",
-                                    "🚀 *İŞLEM TAMAMLANDI!*\n\n[▓▓▓▓▓▓▓▓▓▓] *%100*\n\n✨ *Nasdaq Scanner Renderlandı!*"
-                                ]
-                                
-                                for kare in animasyon_kareleri:
-                                    time.sleep(1.2)
-                                    if msg_id:
-                                        edit_telegram_msg(msg_id, kare)
+                                if msg_id:
+                                    edit_telegram_msg(msg_id, "🚀 *Render Tamamlandı!*")
                             except Exception as e:
                                 if msg_id:
-                                    edit_telegram_msg(msg_id, f"⚠️ *Deploy Hatası:* {e}")
+                                    edit_telegram_msg(msg_id, f"⚠️ *Hata:* {e}")
                         else:
-                            send_telegram_msg("⚠️ Deploy Hook URL eksik.")
+                            send_telegram_msg("⚠️ URL eksik.")
 
                     elif text.startswith("/limit"):
                         parts = text.split()
@@ -185,168 +170,264 @@ def check_telegram_commands():
                                 new_limit = float(parts[1])
                                 if 0.1 <= new_limit <= 20.0:
                                     MAX_PRICE_LIMIT = new_limit
-                                    send_telegram_msg(f"✅ *Fiyat Limiti Güncellendi:* `${MAX_PRICE_LIMIT:.2f}`")
+                                    send_telegram_msg(f"✅ *Limit Güncellendi:* `${MAX_PRICE_LIMIT:.2f}`")
                                 else:
-                                    send_telegram_msg("⚠️ Lütfen $0.10 ile $20.00 arasında bir değer girin.")
+                                    send_telegram_msg("⚠️ $0.10 ile $20.00 arası girin.")
                             except ValueError:
-                                send_telegram_msg("⚠️ Örnek kullanım: `/limit 3.5`")
+                                send_telegram_msg("⚠️ Örnek: `/limit 3.5`")
     except Exception:
         pass
 
+
 # ==========================================
-# 4. BÜTÜN NASDAQ HİSSELERİNİ İNDİRMA
+# 4. TÜM NASDAQ LİSTESİ
 # ==========================================
-def get_all_nasdaq_symbols():
-    """Tüm NASDAQ borsasındaki hisseleri dinamik çeker"""
+def get_penny_stocks():
     try:
         url = "https://old.nasdaqtrader.com/dynamic/symdir/nasdaqtraded.txt"
         df = pd.read_csv(url, sep="|")
         df = df[(df['NASDAQ Symbol'].notnull()) & (df['ETF'] == 'N') & (df['Test Issue'] == 'N')]
         symbols = df['NASDAQ Symbol'].str.strip().tolist()
-        
-        # Yahoo Finance ile uyumsuz sembolleri düzenle
-        clean_symbols = [s.replace('.', '-') for s in symbols if isinstance(s, str) and (s.isalpha() or '.' in s)]
-        return clean_symbols
+        return [s.replace('.', '-') for s in symbols if isinstance(s, str) and len(s) <= 5]
     except Exception as e:
-        print(f"NASDAQ listesi cekilemedi: {e}")
-        return []
+        print(f"Liste hatasi: {e}")
+        return ["ISPC", "ATER", "GMEX", "TWG", "OLB"]
 
 
 # ==========================================
-# 5. KIRILIM ÖNGÖRÜ MOTORU (OLMADAN ÖNCE YAKALAMA)
+# 5. HEDEF VE KIRILIM MOTORU
 # ==========================================
-def analyze_breakout_potential(symbol, df):
-    """
-    Fiyat dirence yakınken ve hacim patlaması varken (kırılım gerçekleşmeden ÖNCE) tespit eder.
-    """
-    if df.empty or len(df) < 15:
-        return None
-
+def calculate_dynamic_targets(df, last_price):
     try:
+        high_low = df['High'] - df['Low']
+        high_close = np.abs(df['High'] - df['Close'].shift())
+        low_close = np.abs(df['Low'] - df['Close'].shift())
+        ranges = pd.concat([high_low, high_close, low_close], axis=1)
+        true_range = np.max(ranges, axis=1)
+        atr = true_range.rolling(14).mean().iloc[-1]
+
+        if pd.isna(atr) or atr == 0:
+            atr = last_price * 0.03
+
+        tp1_dyn = max(last_price * 1.05, last_price + (1.5 * atr))
+        tp1_pct = ((tp1_dyn - last_price) / last_price) * 100
+
+        tp2_dyn = max(last_price * 1.15, last_price + (3.5 * atr))
+        tp2_pct = ((tp2_dyn - last_price) / last_price) * 100
+
+        return tp1_dyn, tp1_pct, tp2_dyn, tp2_pct
+    except Exception:
+        return last_price * 1.07, 7.0, last_price * 1.25, 25.0
+
+def detect_breakout_type(df, vol_ratio, resistance, last_price):
+    if len(df) < 3:
+        return "Öncü Sinyal"
+
+    c_curr = df['Close'].iloc[-1]
+    o_curr = df['Open'].iloc[-1]
+    l_prev1 = df['Low'].iloc[-2]
+
+    if c_curr > o_curr and l_prev1 <= resistance:
+        return "Dirence Sıkışma"
+    elif vol_ratio >= 2.0:
+        return "Hacim Toplama"
+    else:
+        return "Kırılım Adayı"
+
+
+# ==========================================
+# 6. CANLI TARAMA VE ALARM
+# ==========================================
+def process_symbol(symbol, force_send=False):
+    try:
+        ticker = yf.Ticker(symbol)
+        df = ticker.history(period="1d", interval="1m", prepost=True)
+
+        if df.empty:
+            df = ticker.history(period="5d", interval="1m", prepost=True)
+            if df.empty:
+                return
+
         last_price = df['Close'].iloc[-1]
+        open_price = df['Open'].iloc[-1]
         last_volume = df['Volume'].iloc[-1]
         
-        if last_price >= MAX_PRICE_LIMIT or last_price <= 0.10:
-            return None
+        resistance = df['High'][:-1].max() if len(df) > 1 else df['High'].max()
+        avg_volume = df['Volume'][:-1].mean() if len(df) > 1 else last_volume
 
-        # Son 20 mumun en yüksek direnci (bugünkü hariç)
-        resistance = df['High'][:-1].max()
-        avg_volume = df['Volume'][:-1].mean()
+        if not force_send:
+            if last_price >= MAX_PRICE_LIMIT or last_price <= 0.05:
+                return
 
-        if avg_volume <= 0 or pd.isna(resistance) or resistance <= 0:
-            return None
+            distance_to_resistance = (resistance - last_price) / resistance if resistance > 0 else 0.0
+            vol_ratio = last_volume / avg_volume if avg_volume > 0 else 1.0
 
-        # Dirence kalan mesafe (%)
-        distance_to_resistance = ((resistance - last_price) / last_price) * 100
-        vol_ratio = last_volume / avg_volume
+            is_near_breakout = (distance_to_resistance <= 0.025 and last_price >= open_price)
+            is_volume_spike = (vol_ratio >= 1.3)
 
-        # ÖNGÖRÜ KRİTERLERİ:
-        # 1. Fiyat dirence çok yakın (%0.2 - %2.5 mesafede, henüz kırmadı!)
-        is_near_breakout = 0.2 <= distance_to_resistance <= 2.5
-        # 2. Hacim toplanıyor (Ortalamanın en az 1.8 katı hacim girdi)
-        is_volume_building = vol_ratio >= 1.8
+            if not (is_near_breakout or is_volume_spike):
+                return
+        else:
+            vol_ratio = 3.0
 
-        if is_near_breakout and is_volume_building:
-            return {
-                'symbol': symbol,
-                'price': last_price,
-                'resistance': resistance,
-                'distance_pct': distance_to_resistance,
-                'vol_ratio': vol_ratio
-            }
+        if force_send or symbol not in bildirilenler or (time.time() - bildirilenler[symbol]) > 180:
+            kirilim_adi = detect_breakout_type(df, vol_ratio, resistance, last_price)
+            tight_stop = last_price * 0.98    
+            tp1, tp1_pct, tp2, tp2_pct = calculate_dynamic_targets(df, last_price)
+            tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
+
+            msg = (
+                f"🚨 *SİNYAL: #{symbol}*\n"
+                f"━━━━━━━━━━━━━━━━━━━━━\n\n"
+                f"📊 *Durum:* `{kirilim_adi}`\n"
+                f"⚡ *Hacim:* `{vol_ratio:.1f}x`\n\n"
+                f"💵 *Giriş:* `${last_price:.2f}`\n"
+                f"🛡️ *Stop-Loss:* `${tight_stop:.2f}`\n\n"
+                f"🎯 *1. Hedef (+%{tp1_pct:.1f}):* `${tp1:.2f}`\n"
+                f"🎯 *2. Hedef (+%{tp2_pct:.1f}):* `${tp2:.2f}`\n\n"
+                f"📈 [Grafik]({tv_url})"
+            )
+            
+            send_telegram_msg(msg)
+            bildirilenler[symbol] = time.time()
+            
+            if symbol not in gunluk_sinyaller:
+                gunluk_sinyaller[symbol] = {'entry': last_price}
     except Exception:
         pass
+
+
+# ==========================================
+# 7. HABER MODÜLÜ
+# ==========================================
+def kritik_piyasa_etkisi_analiz_et(metin):
+    metin_lower = metin.lower()
+    olumsuz_kelimeler = ["war", "strike", "attack", "sanction", "tariff", "tariffs", "threat", "china", "russia", "ban"]
+    if any(word in metin_lower for word in olumsuz_kelimeler):
+        return "🔴 *Etki:* `NEGATİF`"
+    else:
+        return "🟢 *Etki:* `POZİTİF`"
+
+def trump_ve_piyasa_haberleri_kontrol_et():
+    global gonderilen_haberler
+    rss_url = "https://news.google.com/rss/search?q=Trump+(war+OR+tariff+OR+sanction+OR+attack+OR+China+OR+strike)&hl=en-US&gl=US&ceid=US:en"
+    kritik_kelimeler = ["war", "tariff", "tariffs", "sanction", "attack", "strike", "china", "russia", "military", "missile", "threat", "ban"]
     
-    return None
+    try:
+        feed = feedparser.parse(rss_url)
+        now_utc = datetime.datetime.now(datetime.timezone.utc)
+        
+        for entry in feed.entries[:5]:
+            haber_id = entry.title
+            baslik_lower = entry.title.lower()
+            
+            if haber_id in gonderilen_haberler:
+                continue
+                
+            if hasattr(entry, 'published'):
+                try:
+                    pub_time = parser.parse(entry.published)
+                    if pub_time.tzinfo is None:
+                        pub_time = pub_time.replace(tzinfo=datetime.timezone.utc)
+                    if (now_utc - pub_time).total_seconds() / 60.0 > 60:
+                        gonderilen_haberler.add(haber_id)
+                        continue
+                except Exception:
+                    pass
+
+            if any(word in baslik_lower for word in kritik_kelimeler):
+                etki = kritik_piyasa_etkisi_analiz_et(entry.title)
+                msg = (
+                    f"🌐 *HABER BÜLTENİ*\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"📌 *Başlık:* _{entry.title}_\n\n"
+                    f"{etki}"
+                )
+                send_telegram_msg(msg)
+                gonderilen_haberler.add(haber_id)
+    except Exception as e:
+        print(f"Haber hatasi: {e}")
+
+def haber_tarama_loop():
+    while True:
+        trump_ve_piyasa_haberleri_kontrol_et()
+        time.sleep(3600)
 
 
 # ==========================================
-# 6. TÜM NASDAQ CANLI TARAMA
+# 8. GÜN SONU RAPORU
 # ==========================================
-def scan_nasdaq_market():
-    symbols = get_all_nasdaq_symbols()
+def gun_sonu_raporu_gonder():
+    global gunluk_sinyaller
+    if not gunluk_sinyaller:
+        send_telegram_msg("📊 *GÜNÜN İŞLEMLERİ*\n\n`Bugün sinyal oluşmadı.`")
+        return
+
+    rapor = "📊 *GÜNÜN İŞLEMLERİ*\n"
+    toplam_kar = 0
+    basarili_sayisi = 0
+
+    for symbol, data in gunluk_sinyaller.items():
+        try:
+            ticker = yf.Ticker(symbol)
+            df = ticker.history(period="1d", interval="1m", prepost=True)
+            
+            entry = data['entry']
+            zirve = df['High'].max() if not df.empty else entry
+            
+            kar_pct = ((zirve - entry) / entry) * 100
+            toplam_kar += kar_pct
+            basarili_sayisi += 1
+
+            rapor += f"🟢 `{symbol.ljust(5)}` ➔ `{entry:.2f}` ➡️ `{zirve:.2f}` | `%{kar_pct:.2f}`\n"
+        except Exception:
+            continue
+
+    if basarili_sayisi > 0:
+        ort_kar = toplam_kar / basarili_sayisi
+        rapor += f"\n📈 *Ortalama Kâr:* `%{ort_kar:.2f}`"
+    
+    send_telegram_msg(rapor)
+    gunluk_sinyaller.clear()
+
+
+# ==========================================
+# 9. ANA DÖNGÜ
+# ==========================================
+def canli_kesintisiz_tarama():
+    global rapor_gonderildi_bugun
+
+    now = datetime.datetime.utcnow() + datetime.timedelta(hours=3)
+    if now.hour == 23 and now.minute == 0:
+        if not rapor_gonderildi_bugun:
+            gun_sonu_raporu_gonder()
+            rapor_gonderildi_bugun = True
+    elif now.hour == 0:
+        rapor_gonderildi_bugun = False
+
+    symbols = get_penny_stocks()
     if not symbols:
         return
 
-    print(f"[{datetime.datetime.now().strftime('%H:%M:%S')}] Toplam {len(symbols)} NASDAQ hissesi taranıyor...")
-
-    for i in range(0, len(symbols), BATCH_SIZE):
-        if not is_running:
-            break
-            
-        batch = symbols[i:i + BATCH_SIZE]
-        try:
-            # Multi-thread hızlı veri çekimi
-            data = yf.download(batch, period="5d", interval="1m", group_by='ticker', progress=False, threads=True)
-            
-            for symbol in batch:
-                try:
-                    df = data[symbol].dropna() if len(batch) > 1 else data.dropna()
-                    if df.empty:
-                        continue
-
-                    res = analyze_breakout_potential(symbol, df)
-                    if res:
-                        sym = res['symbol']
-                        # 3 dakikada bir aynı hisseyi tekrar atıp spama düşmesin
-                        if sym not in bildirilenler or (time.time() - bildirilenler[sym]) > 180:
-                            
-                            tp1 = res['price'] * 1.08
-                            tp2 = res['price'] * 1.20
-                            stop = res['price'] * 0.97
-                            tv_url = f"https://www.tradingview.com/chart/?symbol=NASDAQ%3A{sym}"
-
-                            # SADECE METİN MESAJI (FOTOĞRAF YOK)
-                            msg = (
-                                f"🚨 *KIRILIM YAKIN / ÖNGÖRÜ SİNYALİ: #{sym}*\n"
-                                f"━━━━━━━━━━━━━━━━━━━━━\n\n"
-                                f"💵 *Anlık Fiyat:* `${res['price']:.2f}`\n"
-                                f"🎯 *Kritik Direnç:* `${res['resistance']:.2f}`\n"
-                                f"📏 *Dirence Mesafe:* `%{res['distance_pct']:.2f}` (Kırmak Üzere!)\n"
-                                f"⚡ *Hacim Gücü:* `{res['vol_ratio']:.1f}x Katı` (Para GirişiVar)\n\n"
-                                f"🛡️ *Stop-Loss:* `${stop:.2f}`\n"
-                                f"🎯 *1. Hedef:* `${tp1:.2f}`\n"
-                                f"🎯 *2. Hedef:* `${tp2:.2f}`\n\n"
-                                f"💡 *Öngörü:* Hisse dirence dayandı ve hacim topluyor, patlama yapabilir!\n"
-                                f"📈 [TradingView Full Chart]({tv_url})"
-                            )
-                            
-                            send_telegram_msg(msg)
-                            bildirilenler[sym] = time.time()
-                            
-                            if sym not in gunluk_sinyaller:
-                                gunluk_sinyaller[sym] = {'entry': res['price']}
-
-                except Exception:
-                    continue
-
-        except Exception as e:
-            print(f"Batch indirme hatasi: {e}")
-
-        time.sleep(SLEEP_BETWEEN_BATCHES)
-
+    with ThreadPoolExecutor(max_workers=20) as executor:
+        executor.map(process_symbol, symbols)
 
 def start_scanner_loop():
     welcome_msg = (
-        "⚡ *NASDAQ ALL-MARKET SCANNER ONLINE* ⚡\n"
+        "⚡ *NASDAQ TERMINAL ONLINE* ⚡\n"
         "━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "🚀 *Kapsam:* Tüm NASDAQ Borsası (4000+ Hisse)\n"
-        "🎯 *Mod:* Kırılım Öngörü Motoru (Kırılmadan Önce)\n"
-        "💵 *Fiyat Limiti:* `$5.00 ve Altı`\n"
-        "📷 *Görsel:* Kapalı (Sadece Metin)\n\n"
-        "_Tüm piyasa taranıyor, fırsatlar taranıyor..._ 🚀"
+        "🎯 *Limit:* `$3.00 ve Altı`\n"
+        "📊 *Kapsam:* `Tüm NASDAQ`\n\n"
+        "_Tarama başlatıldı..._"
     )
     send_telegram_msg(welcome_msg)
     
     while True:
         try:
             if is_running:
-                scan_nasdaq_market()
-            else:
-                print("Tarama pasif konumda...")
+                canli_kesintisiz_tarama()
         except Exception as e:
-            print(f"Tarama döngüsü hatası: {e}")
-        
+            print(f"Hata: {e}")
         time.sleep(10)
 
 def telegram_komut_dinleme_loop():
@@ -354,10 +435,11 @@ def telegram_komut_dinleme_loop():
         try:
             check_telegram_commands()
         except Exception as e:
-            print(f"Komut dinleme hatası: {e}")
+            print(f"Hata: {e}")
         time.sleep(2)
 
 if __name__ == '__main__':
+    threading.Thread(target=haber_tarama_loop, daemon=True).start()
     threading.Thread(target=start_scanner_loop, daemon=True).start()
     threading.Thread(target=telegram_komut_dinleme_loop, daemon=True).start()
     run_flask()
