@@ -40,13 +40,6 @@ rapor_gonderildi_bugun = False
 last_update_id = 0          
 is_running = True
 
-IMAGE_URLS = {
-    "GERCEK_1": "https://i.ibb.co/WWSb4Fn0/Ekran-g-r-nt-s-2026-09-07-171021.png",
-    "GERCEK_2": "https://i.ibb.co/Ngq2DTrm/Ekran-g-r-nt-s-2026-09-07-171029.png",
-    "YAVAS_HACIM": "https://i.ibb.co/svqwGCJz/Ekran-g-r-nt-s-2026-09-07-171038.png",
-    "ONAYLI": "https://i.ibb.co/V0rY29P5/Ekran-g-r-nt-s-2026-09-07-171049.png"
-}
-
 
 # ==========================================
 # 3. TELEGRAM İLETİŞİM FONKSİYONLARI
@@ -77,28 +70,6 @@ def edit_telegram_msg(message_id, new_text):
         requests.post(url, json=payload, timeout=5)
     except Exception as e:
         print(f"Mesaj guncelleme hatasi: {e}")
-
-def send_telegram_side_photo(photo_url, caption):
-    url_photo = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
-    try:
-        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}
-        img_response = requests.get(photo_url, headers=headers, timeout=15)
-        
-        if img_response.status_code == 200:
-            files = {'photo': ('chart.png', img_response.content)}
-            payload = {
-                "chat_id": TELEGRAM_CHAT_ID,
-                "caption": caption,
-                "parse_mode": "Markdown"
-            }
-            res = requests.post(url_photo, data=payload, files=files, timeout=20).json()
-            if not res.get("ok"):
-                send_telegram_msg(caption)
-        else:
-            send_telegram_msg(caption)
-    except Exception as e:
-        print(f"Resim gonderme hatasi: {e}")
-        send_telegram_msg(caption)
 
 def check_telegram_commands():
     global MAX_PRICE_LIMIT, last_update_id, is_running
@@ -266,7 +237,7 @@ def calculate_dynamic_targets(df, last_price):
 
 def detect_breakout_type(df, vol_ratio, resistance, last_price):
     if len(df) < 3:
-        return "Gerçek Kırılım 1", IMAGE_URLS["GERCEK_1"]
+        return "Gerçek Kırılım 1"
 
     c_curr = df['Close'].iloc[-1]
     o_curr = df['Open'].iloc[-1]
@@ -278,13 +249,13 @@ def detect_breakout_type(df, vol_ratio, resistance, last_price):
     c_prev2 = df['Close'].iloc[-3] if len(df) >= 3 else c_prev1
 
     if c_prev2 > resistance and c_prev1 < o_prev1 and c_curr > o_curr:
-        return "Onaylı Kırılım", IMAGE_URLS["ONAYLI"]
+        return "Onaylı Kırılım"
     elif c_prev1 < o_prev1 and c_curr > o_curr and l_prev1 <= resistance:
-        return "Gerçek Kırılım 2", IMAGE_URLS["GERCEK_2"]
+        return "Gerçek Kırılım 2"
     elif 1.2 <= vol_ratio < 2.5 and c_curr > o_curr:
-        return "Yavaş Hacimli Kırılım", IMAGE_URLS["YAVAS_HACIM"]
+        return "Yavaş Hacimli Kırılım"
     else:
-        return "Gerçek Kırılım 1", IMAGE_URLS["GERCEK_1"]
+        return "Gerçek Kırılım 1"
 
 
 # ==========================================
@@ -314,7 +285,7 @@ def process_symbol(symbol, force_send=False):
             distance_to_resistance = (resistance - last_price) / resistance if resistance > 0 else 0.0
             vol_ratio = last_volume / avg_volume if avg_volume > 0 else 1.0
 
-            # Kırılım veya kırılıma yakınlaşma mantığı
+            # Kırılım öncesi sıkışma veya hacim patlaması tespiti
             is_near_breakout = (distance_to_resistance <= 0.025 and last_price >= open_price)
             is_volume_spike = (vol_ratio >= 1.2)
 
@@ -324,7 +295,7 @@ def process_symbol(symbol, force_send=False):
             vol_ratio = 2.8
 
         if force_send or symbol not in bildirilenler or (time.time() - bildirilenler[symbol]) > 180:
-            kirilim_adi, img_url = detect_breakout_type(df, vol_ratio, resistance, last_price)
+            kirilim_adi = detect_breakout_type(df, vol_ratio, resistance, last_price)
             tight_stop = last_price * 0.98    
             tp1, tp1_pct, tp2, tp2_pct = calculate_dynamic_targets(df, last_price)
             tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
@@ -341,7 +312,7 @@ def process_symbol(symbol, force_send=False):
                 f"📈 [TradingView'de Grafiği İncele]({tv_url})"
             )
             
-            send_telegram_side_photo(img_url, msg)
+            send_telegram_msg(msg)
             bildirilenler[symbol] = time.time()
             
             if symbol not in gunluk_sinyaller:
