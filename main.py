@@ -98,14 +98,14 @@ def check_telegram_commands():
                     if text == "/stop":
                         if is_running:
                             is_running = False
-                            send_telegram_msg("🔴 *BOT DURDURULDU*\n_Tarama donduruldu._")
+                            send_telegram_msg("🔴 *TARAMA DURDURULDU*\n_Tarama donduruldu._")
                         else:
                             send_telegram_msg("⚠️ _Tarama zaten pasif._")
 
                     elif text == "/start":
                         if not is_running:
                             is_running = True
-                            send_telegram_msg("🟢 *BOT DEVREDE*\n_Piyasa taranıyor..._")
+                            send_telegram_msg("🟢 *TARAMA DEVREDE*\n_Piyasa taranıyor..._")
                         else:
                             send_telegram_msg("⚠️ _Tarama zaten aktif._")
 
@@ -162,13 +162,20 @@ def check_telegram_commands():
                             msg_id = init_res.get("result", {}).get("message_id")
                             try:
                                 requests.post(RENDER_DEPLOY_HOOK_URL, timeout=10)
-                                if msg_id:
-                                    edit_telegram_msg(msg_id, "🚀 *Render Tamamlandı!*")
-                            except Exception as e:
-                                if msg_id:
-                                    edit_telegram_msg(msg_id, f"⚠️ *Hata:* {e}")
-                        else:
-                            send_telegram_msg("⚠️ URL eksik.")
+                                
+                                animasyon_kareleri = [
+                                    "🔄 *Render Bağlantısı Kuruluyor...* ⏳",
+                                    "🔄 *Render Bağlantısı Kuruluyor...*\n\n📡 _Sunucuya erişildi..._",
+                                    "⚙️ *Sistem Çekirdeği Yükleniyor...*\n\n[▓░░░░░░░░░] *%10* — _Bağlantı kuruldu_",
+                                    "⚙️ *Mumlar Yakılıyor...*\n\n[▓▓▓░░░░░░░] *%30* — _Hisseler tarandı_",
+                                    "🔥 *Midas Motoru Aktifleştiriliyor...*\n\n[▓▓▓▓▓░░░░░] *%50* — _Para kazanma modu devrede_ 💵",
+                                    "📊 *NASDAQ Veri Akışı Bağlanıyor...*\n\n[▓▓▓▓▓▓▓░░░] *%70* — _Nasdaq taranıyor_",
+                                    "🛡️ *Risk Kontrolleri Yapılıyor...*\n\n[▓▓▓▓▓▓▓▓▓░] *%90* — _Best Scanner created by Dipper_",
+                                    "🚀 *İŞLEM TAMAMLANDI!*\n\n[▓▓▓▓▓▓▓▓▓▓] *%100*\n\n✨ *Nasdaq Scanner Renderlandı!*"
+                                ]
+                                
+                                for kare in animasyon_kareleri:
+                                    time.sleep(1.2)
 
                     elif text.startswith("/limit"):
                         parts = text.split()
