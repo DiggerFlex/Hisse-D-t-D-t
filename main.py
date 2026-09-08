@@ -98,14 +98,14 @@ def check_telegram_commands():
                     if text == "/stop":
                         if is_running:
                             is_running = False
-                            send_telegram_msg("🔴 *BOT DURDURULDU*\n_Tarama donduruldu._")
+                            send_telegram_msg("🔴 *TARAMA DURDURULDU*\n_Tarama donduruldu._")
                         else:
                             send_telegram_msg("⚠️ _Tarama zaten pasif._")
 
                     elif text == "/start":
                         if not is_running:
                             is_running = True
-                            send_telegram_msg("🟢 *BOT DEVREDE*\n_Piyasa taranıyor..._")
+                            send_telegram_msg("🟢 *TARAMA DEVREDE*\n_Piyasa taranıyor..._")
                         else:
                             send_telegram_msg("⚠️ _Tarama zaten aktif._")
 
@@ -141,9 +141,9 @@ def check_telegram_commands():
                         yardim_msg = (
                             "⚡ *KOMUTLAR*\n"
                             "━━━━━━━━━━━━━━━━━━━━━\n\n"
-                            "▶️ `/start` - Başlatır\n"
-                            "⏸️ `/stop` - Durdurur\n"
-                            "⚡ `/ping` - Gecikme ölçer\n"
+                            "▶️ `/start` - Taramayı Başlatır\n"
+                            "⏸️ `/stop` - Taramayı Durdurur\n"
+                            "⚡ `/ping` - Gecikmeyi ölçer\n"
                             "🖥️ `/status` - Durum\n"
                             "📊 `/stats` - Sinyaller\n"
                             "⚙️ `/limit [değer]` - Limit ayarlar\n"
@@ -169,7 +169,7 @@ def check_telegram_commands():
                                     "⚙️ *Sistem Çekirdeği Yükleniyor...*\n\n[▓░░░░░░░░░] *%10* — _Bağlantı kuruldu_",
                                     "⚙️ *Mumlar Yakılıyor...*\n\n[▓▓▓░░░░░░░] *%30* — _Hisseler tarandı_",
                                     "🔥 *Midas Motoru Aktifleştiriliyor...*\n\n[▓▓▓▓▓░░░░░] *%50* — _Para kazanma modu devrede_ 💵",
-                                    "📊 *NASDAQ Veri Akışı Bağlanıyor...*\n\n[▓▓▓▓▓▓▓░░░] *%70* — _Nasdaq taranıyor_",
+                                    "📊 *NASDAQ Veri Akışı Bağlanıyor...*\n\n[▓▓▓▓▓▓▓░░░] *%70* — _3500+ Nasdaq Hisse taranıyor_",
                                     "🛡️ *Risk Kontrolleri Yapılıyor...*\n\n[▓▓▓▓▓▓▓▓▓░] *%90* — _Best Scanner created by Dipper_",
                                     "🚀 *İŞLEM TAMAMLANDI!*\n\n[▓▓▓▓▓▓▓▓▓▓] *%100*\n\n✨ *Nasdaq Scanner Renderlandı!*"
                                 ]
@@ -312,9 +312,9 @@ def process_symbol(symbol, force_send=False):
             f"📊 *Durum:* `{kirilim_adi}`\n"
             f"⚡ *Hacim:* `{vol_ratio:.1f}x`\n\n"
             f"💵 *Giriş:* `${last_price:.2f}`\n"
-            f"🛡️ *Stop-Loss:* `${tight_stop:.2f}`\n\n"
-            f"🎯 *1. Hedef (+%{tp1_pct:.1f}):* `${tp1:.2f}`\n"
-            f"🎯 *2. Hedef (+%{tp2_pct:.1f}):* `${tp2:.2f}`\n\n"
+            f"🛡️ *Stop Emri:* `${tight_stop:.2f}`\n\n"
+            f"🎯 *1. Kademe (+%{tp1_pct:.1f}):* `${tp1:.2f}`\n"
+            f"🎯 *2. Kademe (+%{tp2_pct:.1f}):* `${tp2:.2f}`\n\n"
             f"📈 [Grafik]({tv_url})"
         )
         
