@@ -39,7 +39,7 @@ gonderilen_haberler = set()
 rapor_gonderildi_bugun = False
 last_update_id = 0          
 is_running = True
-last_heartbeat_time = 0  # 5 dakikalık bildirim için zaman takibi
+last_heartbeat_time = 0
 
 
 # ==========================================
@@ -105,7 +105,7 @@ def check_telegram_commands():
                         send_telegram_msg(f"⚡ *Gecikme Süresi:* `{latency:.0f} ms`")
 
                     elif text == "/test":
-                        process_symbol("ISPC", force_send=True)
+                        process_symbol("WDH", force_send=True)
 
                     elif text in ["/status", "/durum"]:
                         status_badge = "🟢 AKTİF / TARANIYOR" if is_running else "🔴 PASİF / BEKLEMEDE"
@@ -265,10 +265,11 @@ def detect_breakout_type(df, vol_ratio, resistance, last_price):
 def process_symbol(symbol, force_send=False):
     try:
         ticker = yf.Ticker(symbol)
-        df = ticker.history(period="1d", interval="1m")
+        # prepost=True EKLENDİ: Piyasa Öncesi (Premarket) verileri de çekilir
+        df = ticker.history(period="1d", interval="1m", prepost=True)
 
         if df.empty:
-            df = ticker.history(period="5d", interval="1m")
+            df = ticker.history(period="5d", interval="1m", prepost=True)
             if df.empty:
                 return
 
@@ -286,9 +287,9 @@ def process_symbol(symbol, force_send=False):
             distance_to_resistance = (resistance - last_price) / resistance if resistance > 0 else 0.0
             vol_ratio = last_volume / avg_volume if avg_volume > 0 else 1.0
 
-            # Kırılım öncesi sıkışma tespiti (Direnç yakınlığı %1.5 + Yeşil mum + Hacim 1.8x)
-            is_near_breakout = (0 <= distance_to_resistance <= 0.015) and (last_price >= open_price)
-            is_volume_spike = (vol_ratio >= 1.8)
+            # Premarket hareketlerini yakalamak için esnek filtre (%2 direnç mesafesi + hacim ivmesi)
+            is_near_breakout = (0 <= distance_to_resistance <= 0.02) and (last_price >= open_price)
+            is_volume_spike = (vol_ratio >= 1.5)
 
             if not (is_near_breakout and is_volume_spike):
                 return
@@ -396,7 +397,7 @@ def gun_sonu_raporu_gonder():
     for symbol, data in gunluk_sinyaller.items():
         try:
             ticker = yf.Ticker(symbol)
-            df = ticker.history(period="1d", interval="1m")
+            df = ticker.history(period="1d", interval="1m", prepost=True)
             
             entry = data['entry']
             zirve = df['High'].max() if not df.empty else entry
@@ -431,11 +432,10 @@ def gun_sonu_raporu_gonder():
 def canli_kesintisiz_tarama():
     global rapor_gonderildi_bugun, last_heartbeat_time
 
-    # --- HER 5 DAKİKADA BİR TARA BİLDİRİMİ GÖNDERME MANTIĞI ---
     now_ts = time.time()
-    if now_ts - last_heartbeat_time >= 300: # 300 saniye = 5 dakika
+    if now_ts - last_heartbeat_time >= 300:
         su_an = (datetime.datetime.utcnow() + datetime.timedelta(hours=3)).strftime("%H:%M")
-        send_telegram_msg(f"🔎 *Piyasa taranıyor...* `[{su_an}]`\n_NASDAQ hisseleri anlık taranmaya devam ediyor._")
+        send_telegram_msg(f"🔎 *Piyasa taranıyor...* `[{su_an}]`\n_NASDAQ hisseleri premarket dahil taranıyor._")
         last_heartbeat_time = now_ts
 
     now = datetime.datetime.utcnow() + datetime.timedelta(hours=3)
@@ -457,9 +457,9 @@ def start_scanner_loop():
     welcome_msg = (
         "⚡ *NASDAQ SCANNER TERMINAL ONLINE* ⚡\n"
         "━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "⚡ *Tarama Motoru:* `Aktif (1m Canlı Veri)`\n"
+        "⚡ *Tarama Motoru:* `Aktif (Premarket Dahil)`\n"
         "🎯 *Fiyat Limiti:* `$5.00 ve Altı`\n"
-        "📊 *Hacim Filtresi:* `1.8x ve Üzeri`\n\n"
+        "📊 *Hacim Filtresi:* `1.5x ve Üzeri`\n\n"
         "_Piyasa taranıyor, fırsatlar bekleniyor..._ 🚀"
     )
     send_telegram_msg(welcome_msg)
