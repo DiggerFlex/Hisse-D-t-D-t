@@ -10,6 +10,7 @@ import numpy as np
 from dateutil import parser
 from concurrent.futures import ThreadPoolExecutor
 from flask import Flask
+from zoneinfo import ZoneInfo  # NASDAQ saat dilimi için
 
 # ==========================================
 # 1. RENDER UYANIK TUTMA (FLASK SUNUCUSU)
@@ -36,11 +37,16 @@ MAX_PRICE_LIMIT = 3.00
 bildirilenler = set()       
 gunluk_sinyaller = {}       
 gonderilen_haberler = set() 
+
+# Zaman kontrol bayrakları
 rapor_gonderildi_bugun = False
+acilis_bildirildi_bugun = False
+son_gun_str = ""
+
 last_update_id = 0         
 is_running = True
 
-# Çakışmaları (Duplicate mesajları) önlemek için kilit mekanizması
+# Çakışmaları önlemek için kilit mekanizması
 lock = threading.Lock()
 
 
@@ -239,11 +245,10 @@ def detect_breakout_type(df, vol_ratio, resistance, last_price):
 
 
 # ==========================================
-# 6. CANLI TARAMA VE ALARM (KİLİTLİ GÜVENLİ KONTROL)
+# 6. CANLI TARAMA VE ALARM
 # ==========================================
 def process_symbol(symbol, force_send=False):
     try:
-        # Ön kontrol (Hızlı eleme)
         if not force_send and symbol in bildirilenler:
             return
 
@@ -277,7 +282,6 @@ def process_symbol(symbol, force_send=False):
         else:
             vol_ratio = 3.0
 
-        # KİLİT MEKANİZMASI: Aynı anda iki thread'in mesaj atmasını kesin olarak engeller
         with lock:
             if symbol in bildirilenler:
                 return
@@ -367,10 +371,10 @@ def haber_tarama_loop():
 
 
 # ==========================================
-# 8. GÜN SONU RAPORU VE LİSTE SIFIRLAMA
+# 8. GÜN SONU RAPORU VE PİYASA DURUM KONTROLÜ
 # ==========================================
 def gun_sonu_raporu_gonder():
-    global gunluk_sinyaller, bildirilenler
+    global gunluk_sinyaller
     if not gunluk_sinyaller:
         send_telegram_msg("📊 *GÜNÜN İŞLEMLERİ*\n\n`Bugün sinyal oluşmadı.`")
         return
@@ -405,20 +409,43 @@ def gun_sonu_raporu_gonder():
     with lock:
         bildirilenler.clear()
 
+def piyasa_zaman_kontrolu():
+    global rapor_gonderildi_bugun, acilis_bildirildi_bugun, son_gun_str
+    
+    try:
+        # ABD Doğu Yakası (New York / NASDAQ) saati baz alınır
+        ny_now = datetime.datetime.now(ZoneInfo("America/New_York"))
+        bugun_str = ny_now.strftime("%Y-%m-%d")
+        
+        # Yeni güne geçildiyse bayrakları sıfırla
+        if son_gun_str != bugun_str:
+            son_gun_str = bugun_str
+            rapor_gonderildi_bugun = False
+            acilis_bildirildi_bugun = False
+
+        # Hafta içi kontrolü (Pazartesi=0, Cuma=4)
+        if ny_now.weekday() < 5:
+            # 1. NASDAQ AÇILIŞI (09:30 NY Saati)
+            if ny_now.hour == 9 and ny_now.minute >= 30:
+                if not acilis_bildirildi_bugun:
+                    send_telegram_msg("🔔 *NASDAQ AÇILDI!*\n_Piyasa işlemleri başladı, tarama aktif._")
+                    acilis_bildirildi_bugun = True
+
+            # 2. NASDAQ KAPANIŞI / GÜN SONU RAPORU (16:00 NY Saati)
+            if ny_now.hour >= 16:
+                if not rapor_gonderildi_bugun:
+                    send_telegram_msg("🔔 *NASDAQ KAPANDI!*\n_Gün sonu raporu hazırlanıyor..._")
+                    gun_sonu_raporu_gonder()
+                    rapor_gonderildi_bugun = True
+    except Exception as e:
+        print(f"Zaman kontrol hatasi: {e}")
+
 
 # ==========================================
 # 9. ANA DÖNGÜ
 # ==========================================
 def canli_kesintisiz_tarama():
-    global rapor_gonderildi_bugun
-
-    now = datetime.datetime.utcnow() + datetime.timedelta(hours=3)
-    if now.hour == 23 and now.minute == 0:
-        if not rapor_gonderildi_bugun:
-            gun_sonu_raporu_gonder()
-            rapor_gonderildi_bugun = True
-    elif now.hour == 0:
-        rapor_gonderildi_bugun = False
+    piyasa_zaman_kontrolu()
 
     symbols = get_penny_stocks()
     if not symbols:
