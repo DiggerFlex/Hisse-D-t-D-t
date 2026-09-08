@@ -28,11 +28,12 @@ TELEGRAM_CHAT_ID = "7743041008"
 RENDER_DEPLOY_HOOK_URL = "https://api.render.com/deploy/srv-daemtan40ujc73ft425g?key=o1ghEoCwW10"
 
 # FINNHUB API KEY'İNİZİ BURAYA YAPIŞTIRIN:
-FINNHUB_API_KEY = "daen3hpr01qqo7nt5lq0daen3hpr01qqo7nt5lqg"
+FINNHUB_API_KEY = "BURAYA_FINNHUB_API_KEY_YAZIN"
 
 MAX_PRICE_LIMIT = 3.00
 
-bildirilenler = {}          
+# Tekrarlı mesajı engellemek için son bildiri fiyatı tutulur
+son_bildirilen_fiyat = {}    
 gunluk_sinyaller = {}       
 gonderilen_haberler = set() 
 rapor_gonderildi_bugun = False
@@ -186,7 +187,6 @@ def get_quote_finnhub(symbol):
         url = f"https://finnhub.io/api/v1/quote?symbol={symbol}&token={FINNHUB_API_KEY}"
         res = requests.get(url, timeout=5).json()
         
-        # c: Current price, h: High, l: Low, o: Open, pc: Previous close
         if "c" in res and res["c"] > 0:
             return {
                 "current": res["c"],
@@ -208,22 +208,22 @@ def process_symbol(symbol):
     prev_close = data["prev_close"]
     high_price = data["high"]
 
-    if last_price >= MAX_PRICE_LIMIT or last_price <= 0.05:
+    # Fiyat sınır kontrolleri
+    if last_price >= MAX_PRICE_LIMIT or last_price <= 0.05 or prev_close <= 0:
         return
 
-    if prev_close <= 0:
-        return
-
-    # Yüzdesel değişim hesabı
     pct_change = ((last_price - prev_close) / prev_close) * 100
 
-    # Kriter: En az %2 artış görmüş ve son 3 dakikada bildirilmemişse
+    # Temel kriter: En az %2 artış
     if pct_change >= 2.0:
-        if symbol not in bildirilenler or (time.time() - bildirilenler[symbol]) > 180:
+        # TEKRAR ENGELLEME FİLTRESİ:
+        # Hisse daha önce hiç atılmadıysa VEYA fiyatı son atılan seviyenin en az %3 yukarısına kırıldıysa at.
+        if symbol not in son_bildirilen_fiyat or last_price >= (son_bildirilen_fiyat[symbol] * 1.03):
             tight_stop = last_price * 0.95
             tp1 = last_price * 1.10
             tp2 = last_price * 1.25
-            tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
+            
+            tv_url = f"https://www.tradingview.com/chart/?symbol=NASDAQ%3A{symbol}"
 
             msg = (
                 f"🚨 *NASDAQ REAL-TIME SİNYAL: #{symbol}*\n"
@@ -234,11 +234,13 @@ def process_symbol(symbol):
                 f"🛡️ *Stop-Loss:* `${tight_stop:.2f}`\n"
                 f"🎯 *1. Hedef:* `${tp1:.2f}`\n"
                 f"🎯 *2. Hedef:* `${tp2:.2f}`\n\n"
-                f"📈 [TradingView]({tv_url})"
+                f"📈 [TradingView Full Chart]({tv_url})"
             )
             
             send_telegram_msg(msg)
-            bildirilenler[symbol] = time.time()
+            
+            # Son bildirilen fiyatı güncelle
+            son_bildirilen_fiyat[symbol] = last_price
             
             if symbol not in gunluk_sinyaller:
                 gunluk_sinyaller[symbol] = {'entry': last_price}
@@ -263,7 +265,6 @@ def trump_ve_piyasa_haberleri_kontrol_et():
     
     try:
         feed = feedparser.parse(rss_url)
-        now_utc = datetime.datetime.now(datetime.timezone.utc)
         
         for entry in feed.entries[:5]:
             haber_id = entry.title
@@ -295,7 +296,7 @@ def haber_tarama_loop():
 # 6. GÜN SONU PERFORMANS RAPORU
 # ==========================================
 def gun_sonu_raporu_gonder():
-    global gunluk_sinyaller
+    global gunluk_sinyaller, son_bildirilen_fiyat
     if not gunluk_sinyaller:
         send_telegram_msg("PARA KAZANMA SANATI\n📊 **GÜNÜN İŞLEMLERİ** 📊\n\n`Bugün henüz sinyal oluşmadı.`")
         return
@@ -325,20 +326,21 @@ def gun_sonu_raporu_gonder():
         rapor += f"\n📈 **Toplam Getiri:** `%{toplam_kar:.2f}`"
     
     send_telegram_msg(rapor)
+    
+    # Gece yarısı hafızayı temizle
     gunluk_sinyaller.clear()
+    son_bildirilen_fiyat.clear()
 
 
 # ==========================================
 # 7. CANLI TARAMA VE PROGRAM BAŞLATICI
 # ==========================================
-# Önceden izlenecek popüler Penny Stock listesi
 WATCHLIST = ["ARBE", "CDTG", "BJDX", "WDH", "BBAI", "SOUN", "GNS", "NVOS", "TNSL", "MULN", "KOSS", "VISL", "VERB", "SNOA", "EBON"]
 
 def canli_kesintisiz_tarama():
     global rapor_gonderildi_bugun, last_heartbeat_time
 
     now_ts = time.time()
-    # 15 dakikada bir (900 saniye) Telegram'a bildirim
     if now_ts - last_heartbeat_time >= 900:
         su_an = (datetime.datetime.utcnow() + datetime.timedelta(hours=3)).strftime("%H:%M")
         send_telegram_msg(f"🔎 *Piyasa taranıyor...* `[{su_an}]`")
@@ -352,10 +354,9 @@ def canli_kesintisiz_tarama():
     elif now.hour == 0:
         rapor_gonderildi_bugun = False
 
-    # İzleme listesindeki hisseleri teker teker Finnhub anlık fiyatıyla tara
     for sym in WATCHLIST:
         process_symbol(sym)
-        time.sleep(1) # API limitlerini aşmamak için 1s bekleme
+        time.sleep(1)
 
 def start_scanner_loop():
     welcome_msg = (
