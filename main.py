@@ -265,52 +265,54 @@ def detect_breakout_type(df, vol_ratio, resistance, last_price):
 def process_symbol(symbol, force_send=False):
     try:
         ticker = yf.Ticker(symbol)
-        # prepost=True EKLENDİ: Piyasa Öncesi (Premarket) verileri de çekilir
         df = ticker.history(period="1d", interval="1m", prepost=True)
 
-        if df.empty:
-            df = ticker.history(period="5d", interval="1m", prepost=True)
-            if df.empty:
-                return
+        if df.empty or len(df) < 5:
+            return
 
         last_price = df['Close'].iloc[-1]
         open_price = df['Open'].iloc[-1]
-        last_volume = df['Volume'].iloc[-1]
         
-        resistance = df['High'][:-1].max() if len(df) > 1 else df['High'].max()
-        avg_volume = df['Volume'][:-1].mean() if len(df) > 1 else last_volume
+        # Sadece günün zirvesine değil, SON 30 DAKİKANIN zirvesine bak (Yakın Direnç)
+        recent_df = df.tail(30)
+        resistance = recent_df['High'][:-1].max() if len(recent_df) > 1 else recent_df['High'].max()
 
         if not force_send:
             if last_price >= MAX_PRICE_LIMIT or last_price <= 0.05:
                 return
 
+            # Direnç mesafesi (%3'e kadar esnetildi)
             distance_to_resistance = (resistance - last_price) / resistance if resistance > 0 else 0.0
-            vol_ratio = last_volume / avg_volume if avg_volume > 0 else 1.0
+            
+            # Son mum dev bir yeşil mum mu? (Fiyat mum açılışına göre %1.5+ yukarıda mı?)
+            is_strong_green_bar = (last_price - open_price) / open_price >= 0.015
+            
+            # Yakın dirence çok yakın mı (%3 mesafe)
+            is_near_breakout = (0 <= distance_to_resistance <= 0.03)
 
-            # Premarket hareketlerini yakalamak için esnek filtre (%2 direnç mesafesi + hacim ivmesi)
-            is_near_breakout = (0 <= distance_to_resistance <= 0.02) and (last_price >= open_price)
-            is_volume_spike = (vol_ratio >= 1.5)
-
-            if not (is_near_breakout and is_volume_spike):
+            # Premarket hacim verisi eksik gelse bile Güçlü Yeşil Bar + Direnç Yakınlığı yetmeli
+            if not (is_near_breakout and is_strong_green_bar):
                 return
         else:
             vol_ratio = 2.8
 
         if force_send or symbol not in bildirilenler or (time.time() - bildirilenler[symbol]) > 180:
-            kirilim_adi = detect_breakout_type(df, vol_ratio, resistance, last_price)
-            tight_stop = last_price * 0.98    
-            tp1, tp1_pct, tp2, tp2_pct = calculate_dynamic_targets(df, last_price)
+            vol_ratio = 2.0 # Varsayılan görünüm
+            kirilim_adi = "Direnç Testi / Kırılım Öncesi"
+            tight_stop = last_price * 0.95 # %5 Stop
+            tp1 = last_price * 1.10
+            tp2 = last_price * 1.22
             tv_url = f"https://www.tradingview.com/symbols/NASDAQ-{symbol}/"
 
             msg = (
                 f"🚨 *NASDAQ SON DAKİKA: #{symbol}*\n"
                 f"━━━━━━━━━━━━━━━━━━━━━\n\n"
                 f"📊 *Kırılım Tipi:* `🟢 {kirilim_adi}`\n"
-                f"⚡ *Hacim Gücü:* `{vol_ratio:.1f}x Katı` (Hacim Patlaması)\n\n"
                 f"💵 *Giriş Fiyatı:* `${last_price:.2f}`\n"
-                f"🛡️ *Stop-Loss (-%2.0):* `${tight_stop:.2f}`\n\n"
-                f"🎯 *1. Kademe Satış (+%{tp1_pct:.1f}):* `${tp1:.2f}`\n"
-                f"🎯 *2. Kademe Satış (+%{tp2_pct:.1f}):* `${tp2:.2f}`\n\n"
+                f"🎯 *Yakın Direnç:* `${resistance:.2f}`\n\n"
+                f"🛡️ *Stop-Loss:* `${tight_stop:.2f}`\n"
+                f"🎯 *1. Hedef:* `${tp1:.2f}`\n"
+                f"🎯 *2. Hedef:* `${tp2:.2f}`\n\n"
                 f"📈 [TradingView'de Grafiği İncele]({tv_url})"
             )
             
@@ -321,7 +323,6 @@ def process_symbol(symbol, force_send=False):
                 gunluk_sinyaller[symbol] = {'entry': last_price}
     except Exception:
         pass
-
 
 # ==========================================
 # 7. TRUMP VE HABER MODÜLÜ
