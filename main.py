@@ -29,14 +29,13 @@ def run_flask():
 # ==========================================
 # 2. AYARLAR VE DİNAMİK DEĞİŞKENLER
 # ==========================================
-# YENİ TOKEN'INI BURAYA YAPIŞTIR:
 TELEGRAM_BOT_TOKEN = "8750813780:AAHKpVFsxqT6BgYbISMZhiAp-ryzNsZ8IZY"
 TELEGRAM_CHAT_ID = "7743041008"
 RENDER_DEPLOY_HOOK_URL = "https://api.render.com/deploy/srv-daemtan40ujc73ft425g?key=o1ghEoCwW10"
 MAX_PRICE_LIMIT = 3.00
 
 bildirilenler = set()       
-gunluk_sinyaller = {}       
+gunluk_sinyaller = {}       # { 'SYMBOL': {'entry': price, 'tp1': val, 'tp2': val} }
 gonderilen_haberler = set() 
 
 # Zaman kontrol bayrakları
@@ -204,7 +203,7 @@ def check_telegram_commands():
 
 
 # ==========================================
-# 4. TÜM NASDAQ LİSTESİ (SADECE GERÇEK LİSTE)
+# 4. TÜM NASDAQ LİSTESİ
 # ==========================================
 def get_penny_stocks():
     while True:
@@ -215,7 +214,7 @@ def get_penny_stocks():
             symbols = df['NASDAQ Symbol'].str.strip().tolist()
             clean_symbols = [s.replace('.', '-') for s in symbols if isinstance(s, str) and len(s) <= 5]
             
-            if len(clean_symbols) > 100:  # Gerçek listenin çekildiğinden emin olunuyor
+            if len(clean_symbols) > 100:
                 return clean_symbols
         except Exception as e:
             print(f"Borsa listesi çekilemedi, 5 sn sonra tekrar deneniyor... Hata: {e}")
@@ -310,7 +309,6 @@ def process_symbol(symbol, force_send=False):
         tight_stop = last_price * 0.98    
         tp1, tp1_pct, tp2, tp2_pct = calculate_dynamic_targets(df, last_price)
         
-        # Tam ekran TradingView grafik linki
         tv_url = f"https://www.tradingview.com/chart/?symbol={symbol}"
 
         msg = (
@@ -327,8 +325,13 @@ def process_symbol(symbol, force_send=False):
         
         send_telegram_msg(msg)
         
+        # Gün sonu raporunda kullanmak üzere hedefleri kaydediyoruz
         if symbol not in gunluk_sinyaller:
-            gunluk_sinyaller[symbol] = {'entry': last_price}
+            gunluk_sinyaller[symbol] = {
+                'entry': last_price,
+                'tp1': tp1,
+                'tp2': tp2
+            }
             
     except Exception:
         pass
@@ -392,15 +395,15 @@ def haber_tarama_loop():
 
 
 # ==========================================
-# 8. GÜN SONU RAPORU VE PİYASA DURUM KONTROLÜ
+# 8. BİREBİR GÖRSEL FORMATINDA GÜN SONU RAPORU
 # ==========================================
 def gun_sonu_raporu_gonder():
     global gunluk_sinyaller
     if not gunluk_sinyaller:
-        send_telegram_msg("📊 *GÜNÜN İŞLEMLERİ*\n\n`Bugün sinyal oluşmadı.`")
+        send_telegram_msg("PARA KAZANMA SANATI\n📊 *GÜNÜN İŞLEMLERİ* 📊\n\n`Bugün sinyal oluşmadı.`")
         return
 
-    rapor = "📊 *GÜNÜN İŞLEMLERİ*\n"
+    rapor = "PARA KAZANMA SANATI\n📊 *GÜNÜN İŞLEMLERİ* 📊\n"
     toplam_kar = 0
     basarili_sayisi = 0
 
@@ -410,19 +413,48 @@ def gun_sonu_raporu_gonder():
             df = ticker.history(period="1d", interval="1m", prepost=True)
             
             entry = data['entry']
+            tp1 = data.get('tp1', entry * 1.05)
+            tp2 = data.get('tp2', entry * 1.15)
+            
             zirve = df['High'].max() if not df.empty else entry
             
+            # Kademe durumu kontrolü
+            if zirve >= tp2:
+                kademe_str = "(TÜM kademeler tamam)"
+                hedef_fiyat = tp2
+            elif zirve >= tp1:
+                kademe_str = "(1. kademe tamam)"
+                hedef_fiyat = tp1
+            else:
+                kademe_str = "(takipte)"
+                hedef_fiyat = zirve
+
             kar_pct = ((zirve - entry) / entry) * 100
+            
+            # Roket/Kese emojileri
+            if kar_pct >= 50:
+                emoji = "🚀🚀🚀"
+            elif kar_pct >= 20:
+                emoji = "🚀"
+            else:
+                emoji = "💰"
+
+            rapor += f"🟢 *{symbol}* ➔ `{entry:.2f}` ➡️ `{hedef_fiyat:.2f}` {kademe_str} | `%{kar_pct:.2f}` kâr {emoji}\n"
+            
+            # Ekstra yüksek patlama yaptıysa alt bilgi ekle (Görseldeki gibi)
+            if zirve > tp2 * 1.05 and kar_pct > 15:
+                rapor += f"└ Gün içi {zirve:.2f}'e yükseldi ➔ anlık %{kar_pct:.2f} 🔥\n"
+
             toplam_kar += kar_pct
             basarili_sayisi += 1
 
-            rapor += f"🟢 `{symbol.ljust(5)}` ➔ `{entry:.2f}` ➡️ `{zirve:.2f}` | `%{kar_pct:.2f}`\n"
-        except Exception:
+        except Exception as e:
+            print(f"Rapor hatasi ({symbol}): {e}")
             continue
 
     if basarili_sayisi > 0:
         ort_kar = toplam_kar / basarili_sayisi
-        rapor += f"\n📈 *Ortalama Kâr:* `%{ort_kar:.2f}`"
+        rapor += f"\n📈 *Ortalama Kâr: %{ort_kar:.2f}*"
     
     send_telegram_msg(rapor)
     gunluk_sinyaller.clear()
