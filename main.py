@@ -282,6 +282,23 @@ def process_symbol(symbol, force_send=False):
         open_price = df['Open'].iloc[-1]
         last_volume = df['Volume'].iloc[-1]
         
+        # ----------------------------------------------------
+        # 🚨 YENİ EKLENEN MANİPÜLASYON / SPOOFING KONTROLÜ
+        # ----------------------------------------------------
+        if len(df) >= 2:
+            price_spread = df['High'].iloc[-1] - df['Low'].iloc[-1]
+            # Fiyat haraketli ama gerçekleşen lot 0 veya 1 ise uyarı at
+            if price_spread > 0 and last_volume <= 1:
+                manipulasyon_msg = (
+                    f"⚠️ *MANİPÜLASYON ŞÜPHESİ: #{symbol}*\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━\n"
+                    f"• Son 30sn/1dk içinde emir defterinde hareketlilik var ama *sadece {int(last_volume)} gerçek işlem* gerçekleşti.\n"
+                    f"• Çok fazla emir veriliyor/iptal ediliyor, gerçek alım-satım neredeyse yok.\n"
+                    f"_(bu bir tespit sinyalidir, kesin kanıt değildir)._"
+                )
+                send_telegram_msg(manipulasyon_msg)
+        # ----------------------------------------------------
+
         resistance = df['High'][:-1].max() if len(df) > 1 else df['High'].max()
         avg_volume = df['Volume'][:-1].mean() if len(df) > 1 else last_volume
 
@@ -325,7 +342,6 @@ def process_symbol(symbol, force_send=False):
         
         send_telegram_msg(msg)
         
-        # Gün sonu raporunda kullanmak üzere hedefleri kaydediyoruz
         if symbol not in gunluk_sinyaller:
             gunluk_sinyaller[symbol] = {
                 'entry': last_price,
@@ -335,7 +351,6 @@ def process_symbol(symbol, force_send=False):
             
     except Exception:
         pass
-
 
 # ==========================================
 # 7. HABER MODÜLÜ
