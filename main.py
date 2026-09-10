@@ -29,7 +29,8 @@ def run_flask():
 # ==========================================
 # 2. AYARLAR VE DİNAMİK DEĞİŞKENLER
 # ==========================================
-TELEGRAM_BOT_TOKEN = "8750813780:AAHvWiUdKO6bzxBQHFx4GQnV9CHztjQaOH0"
+# YENİ TOKEN'INI BURAYA YAPIŞTIR:
+TELEGRAM_BOT_TOKEN = "8750813780:AAHKpVFsxqT6BgYbISMZhiAp-ryzNsZ8IZY"
 TELEGRAM_CHAT_ID = "7743041008"
 RENDER_DEPLOY_HOOK_URL = "https://api.render.com/deploy/srv-daemtan40ujc73ft425g?key=o1ghEoCwW10"
 MAX_PRICE_LIMIT = 3.00
@@ -98,14 +99,14 @@ def check_telegram_commands():
                     if text == "/stop":
                         if is_running:
                             is_running = False
-                            send_telegram_msg("🔴 *TARAMA DURDURULDU*\n_Tarama donduruldu._")
+                            send_telegram_msg("🔴 *BOT DURDURULDU*\n_Tarama donduruldu._")
                         else:
                             send_telegram_msg("⚠️ _Tarama zaten pasif._")
 
                     elif text == "/start":
                         if not is_running:
                             is_running = True
-                            send_telegram_msg("🟢 *TARAMA DEVREDE*\n_Piyasa taranıyor..._")
+                            send_telegram_msg("🟢 *BOT DEVREDE*\n_Piyasa taranıyor..._")
                         else:
                             send_telegram_msg("⚠️ _Tarama zaten aktif._")
 
@@ -141,9 +142,9 @@ def check_telegram_commands():
                         yardim_msg = (
                             "⚡ *KOMUTLAR*\n"
                             "━━━━━━━━━━━━━━━━━━━━━\n\n"
-                            "▶️ `/start` - Taramayı Başlatır\n"
-                            "⏸️ `/stop` - Taramayı Durdurur\n"
-                            "⚡ `/ping` - Gecikmeyi ölçer\n"
+                            "▶️ `/start` - Başlatır\n"
+                            "⏸️ `/stop` - Durdurur\n"
+                            "⚡ `/ping` - Gecikme ölçer\n"
                             "🖥️ `/status` - Durum\n"
                             "📊 `/stats` - Sinyaller\n"
                             "⚙️ `/limit [değer]` - Limit ayarlar\n"
@@ -169,7 +170,7 @@ def check_telegram_commands():
                                     "⚙️ *Sistem Çekirdeği Yükleniyor...*\n\n[▓░░░░░░░░░] *%10* — _Bağlantı kuruldu_",
                                     "⚙️ *Mumlar Yakılıyor...*\n\n[▓▓▓░░░░░░░] *%30* — _Hisseler tarandı_",
                                     "🔥 *Midas Motoru Aktifleştiriliyor...*\n\n[▓▓▓▓▓░░░░░] *%50* — _Para kazanma modu devrede_ 💵",
-                                    "📊 *NASDAQ Veri Akışı Bağlanıyor...*\n\n[▓▓▓▓▓▓▓░░░] *%70* — _3500+ Nasdaq Hisse taranıyor_",
+                                    "📊 *NASDAQ Veri Akışı Bağlanıyor...*\n\n[▓▓▓▓▓▓▓░░░] *%70* — _Nasdaq taranıyor_",
                                     "🛡️ *Risk Kontrolleri Yapılıyor...*\n\n[▓▓▓▓▓▓▓▓▓░] *%90* — _Best Scanner created by Dipper_",
                                     "🚀 *İŞLEM TAMAMLANDI!*\n\n[▓▓▓▓▓▓▓▓▓▓] *%100*\n\n✨ *Nasdaq Scanner Renderlandı!*"
                                 ]
@@ -203,18 +204,22 @@ def check_telegram_commands():
 
 
 # ==========================================
-# 4. TÜM NASDAQ LİSTESİ
+# 4. TÜM NASDAQ LİSTESİ (SADECE GERÇEK LİSTE)
 # ==========================================
 def get_penny_stocks():
-    try:
-        url = "https://old.nasdaqtrader.com/dynamic/symdir/nasdaqtraded.txt"
-        df = pd.read_csv(url, sep="|")
-        df = df[(df['NASDAQ Symbol'].notnull()) & (df['ETF'] == 'N') & (df['Test Issue'] == 'N')]
-        symbols = df['NASDAQ Symbol'].str.strip().tolist()
-        return [s.replace('.', '-') for s in symbols if isinstance(s, str) and len(s) <= 5]
-    except Exception as e:
-        print(f"Liste hatasi: {e}")
-        return ["ISPC", "ATER", "GMEX", "TWG", "OLB"]
+    while True:
+        try:
+            url = "https://old.nasdaqtrader.com/dynamic/symdir/nasdaqtraded.txt"
+            df = pd.read_csv(url, sep="|", timeout=15)
+            df = df[(df['NASDAQ Symbol'].notnull()) & (df['ETF'] == 'N') & (df['Test Issue'] == 'N')]
+            symbols = df['NASDAQ Symbol'].str.strip().tolist()
+            clean_symbols = [s.replace('.', '-') for s in symbols if isinstance(s, str) and len(s) <= 5]
+            
+            if len(clean_symbols) > 100:  # Gerçek listenin çekildiğinden emin olunuyor
+                return clean_symbols
+        except Exception as e:
+            print(f"Borsa listesi çekilemedi, 5 sn sonra tekrar deneniyor... Hata: {e}")
+            time.sleep(5)
 
 
 # ==========================================
@@ -305,7 +310,7 @@ def process_symbol(symbol, force_send=False):
         tight_stop = last_price * 0.98    
         tp1, tp1_pct, tp2, tp2_pct = calculate_dynamic_targets(df, last_price)
         
-        # 🎯 BURAYI BU ŞEKİLDE GÜNCELLE:
+        # Tam ekran TradingView grafik linki
         tv_url = f"https://www.tradingview.com/chart/?symbol={symbol}"
 
         msg = (
@@ -314,9 +319,9 @@ def process_symbol(symbol, force_send=False):
             f"📊 *Durum:* `{kirilim_adi}`\n"
             f"⚡ *Hacim:* `{vol_ratio:.1f}x`\n\n"
             f"💵 *Giriş:* `${last_price:.2f}`\n"
-            f"🛡️ *Stop Emri:* `${tight_stop:.2f}`\n\n"
-            f"🎯 *1. Kademe (+%{tp1_pct:.1f}):* `${tp1:.2f}`\n"
-            f"🎯 *2. Kademe (+%{tp2_pct:.1f}):* `${tp2:.2f}`\n\n"
+            f"🛡️ *Stop-Loss:* `${tight_stop:.2f}`\n\n"
+            f"🎯 *1. Hedef (+%{tp1_pct:.1f}):* `${tp1:.2f}`\n"
+            f"🎯 *2. Hedef (+%{tp2_pct:.1f}):* `${tp2:.2f}`\n\n"
             f"📈 [Grafik]({tv_url})"
         )
         
