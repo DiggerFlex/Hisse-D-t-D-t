@@ -529,7 +529,7 @@ def start_scanner_loop():
         "⚡ *NASDAQ TERMINAL ONLINE* ⚡\n"
         "━━━━━━━━━━━━━━━━━━━━━\n\n"
         "🎯 *Limit:* `$3.00 ve Altı`\n"
-        "📊 *Kapsam:* `Tüm NASDAQ (Polygon.io Engine)`\n\n"
+        "📊 *Kapsam:* `Nasdaq.live`\n\n"
         "_Tarama başlatıldı..._"
     )
     send_telegram_msg(welcome_msg)
