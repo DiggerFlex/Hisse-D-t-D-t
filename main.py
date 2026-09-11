@@ -32,9 +32,9 @@ TELEGRAM_BOT_TOKEN = "8750813780:AAHKpVFsxqT6BgYbISMZhiAp-ryzNsZ8IZY"
 TELEGRAM_CHAT_ID = "7743041008"
 RENDER_DEPLOY_HOOK_URL = "https://api.render.com/deploy/srv-daemtan40ujc73ft425g?key=o1ghEoCwW10"
 POLYGON_API_KEY = "2MCQinSzcjSGpa2NtrgML6xHrYCK4tLZ"
-MAX_PRICE_LIMIT = 3.00
+MAX_PRICE_LIMIT = 15.00  # Varsayılan limit $15.00 çekildi
 
-bildirilenler = set()       
+bildirilen_fiyatlar = {}    # { 'SYMBOL': son_bildirilen_fiyat } -> Çoklu kırılım takibi için
 gunluk_sinyaller = {}       # { 'SYMBOL': {'entry': price, 'tp1': val, 'tp2': val} }
 gonderilen_haberler = set() 
 
@@ -191,13 +191,13 @@ def check_telegram_commands():
                         elif len(parts) == 2:
                             try:
                                 new_limit = float(parts[1])
-                                if 0.1 <= new_limit <= 20.0:
+                                if 0.1 <= new_limit <= 50.0:
                                     MAX_PRICE_LIMIT = new_limit
                                     send_telegram_msg(f"✅ *Limit Güncellendi:* `${MAX_PRICE_LIMIT:.2f}`")
                                 else:
-                                    send_telegram_msg("⚠️ $0.10 ile $20.00 arası girin.")
+                                    send_telegram_msg("⚠️ $0.10 ile $50.00 arası girin.")
                             except ValueError:
-                                send_telegram_msg("⚠️ Örnek: `/limit 3.5`")
+                                send_telegram_msg("⚠️ Örnek: `/limit 15`")
     except Exception:
         pass
 
@@ -286,7 +286,7 @@ def detect_breakout_type(df, vol_ratio, resistance, last_price):
 
     if c_curr > o_curr and l_prev1 <= resistance:
         return "Dirence Sıkışma"
-    elif vol_ratio >= 2.0:
+    elif vol_ratio >= 1.5:
         return "Hacim Toplama"
     else:
         return "Kırılım Adayı"
@@ -297,9 +297,6 @@ def detect_breakout_type(df, vol_ratio, resistance, last_price):
 # ==========================================
 def process_symbol(symbol, force_send=False):
     try:
-        if not force_send and symbol in bildirilenler:
-            return
-
         df = get_polygon_history(symbol)
 
         if df.empty:
@@ -316,21 +313,28 @@ def process_symbol(symbol, force_send=False):
             if last_price >= MAX_PRICE_LIMIT or last_price <= 0.05:
                 return
 
-            distance_to_resistance = (resistance - last_price) / resistance if resistance > 0 else 0.0
+            # ESNETİLMİŞ DİRENÇ VE HACİM ŞARTLARI
+            distance_to_resistance = (last_price - resistance) / resistance if resistance > 0 else 0.0
             vol_ratio = last_volume / avg_volume if avg_volume > 0 else 1.0
 
-            is_near_breakout = (distance_to_resistance <= 0.025 and last_price >= open_price)
-            is_volume_spike = (vol_ratio >= 1.3)
+            # Dirence %6'ya kadar yaklaşmış veya direnci %6'ya kadar yeni kırmış olanları yakalar
+            is_near_breakout = (-0.06 <= distance_to_resistance <= 0.06 and last_price >= open_price)
+            is_volume_spike = (vol_ratio >= 1.2)
 
             if not (is_near_breakout or is_volume_spike):
                 return
         else:
             vol_ratio = 3.0
 
+        # ÇOKLU KIRILIM KONTROLÜ (TNON, TRUG vb. için)
         with lock:
-            if symbol in bildirilenler:
-                return
-            bildirilenler.add(symbol)
+            if symbol in bildirilen_fiyatlar:
+                son_fiyat = bildirilen_fiyatlar[symbol]
+                # Eğer yeni kırılım fiyatı önceki bildirimden en az %5 yukarıda değilse atla
+                if last_price < son_fiyat * 1.05 and not force_send:
+                    return
+            
+            bildirilen_fiyatlar[symbol] = last_price
 
         kirilim_adi = detect_breakout_type(df, vol_ratio, resistance, last_price)
         tight_stop = last_price * 0.98    
@@ -482,7 +486,7 @@ def gun_sonu_raporu_gonder():
     gunluk_sinyaller.clear()
     
     with lock:
-        bildirilenler.clear()
+        bildirilen_fiyatlar.clear()
 
 def piyasa_zaman_kontrolu():
     global rapor_gonderildi_bugun, acilis_bildirildi_bugun, son_gun_str
@@ -528,8 +532,8 @@ def start_scanner_loop():
     welcome_msg = (
         "⚡ *NASDAQ TERMINAL ONLINE* ⚡\n"
         "━━━━━━━━━━━━━━━━━━━━━\n\n"
-        "🎯 *Limit:* `$3.00 ve Altı`\n"
-        "📊 *Kapsam:* `Nasdaq.live`\n\n"
+        "🎯 *Limit:* `$15.00 ve Altı`\n"
+        "📊 *Kapsam:* `Tüm NASDAQ (Polygon.io Engine)`\n\n"
         "_Tarama başlatıldı..._"
     )
     send_telegram_msg(welcome_msg)
