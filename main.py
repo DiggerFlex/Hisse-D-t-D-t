@@ -12,7 +12,6 @@ from zoneinfo import ZoneInfo
 
 app = Flask(__name__)
 
-# Şık ve modern bir finansal terminal arayüzü (Dark Mode)
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="tr">
@@ -74,6 +73,14 @@ last_update_id = 0
 lock = threading.Lock()
 market_closed_sent = False
 
+def send_telegram_msg(message):
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown", "disable_web_page_preview": True}
+    try:
+        requests.post(url, json=payload, timeout=10)
+    except Exception:
+        pass
+
 @app.route('/')
 def home():
     session_status = get_market_session()
@@ -86,14 +93,6 @@ def home():
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
-
-def send_telegram_msg(message):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "Markdown", "disable_web_page_preview": True}
-    try:
-        requests.post(url, json=payload, timeout=10)
-    except Exception:
-        pass
 
 def get_market_session():
     now_et = datetime.datetime.now(ZoneInfo("America/New_York"))
@@ -138,7 +137,14 @@ def check_telegram_commands():
                         with lock:
                             if not is_running:
                                 is_running = True
-                                send_telegram_msg("NASDAQ SCANNER AKTIF")
+                                start_msg = (
+                                    f"⚡ *NASDAQ TERMINAL ONLINE* ⚡\n"
+                                    f"━━━━━━━━━━━━━━━━━━━━━\n\n"
+                                    f"🎯 Limit: `${MAX_PRICE_LIMIT:.2f}` ve Altı\n"
+                                    f"📊 Kapsam: Tüm NASDAQ\n\n"
+                                    f"_Tarama başlatıldı..._"
+                                )
+                                send_telegram_msg(start_msg)
                             else:
                                 send_telegram_msg("Tarama zaten aktif")
                     elif text == "/report":
@@ -278,7 +284,14 @@ def send_daily_report(manual=False):
 
 def start_scanner_loop():
     global market_closed_sent
-    send_telegram_msg("NASDAQ SCANNER AKTIF")
+    initial_msg = (
+        f"⚡ *NASDAQ TERMINAL ONLINE* ⚡\n"
+        f"━━━━━━━━━━━━━━━━━━━━━\n\n"
+        f"🎯 Limit: `${MAX_PRICE_LIMIT:.2f}` ve Altı\n"
+        f"📊 Kapsam: Tüm NASDAQ\n\n"
+        f"_Tarama başlatıldı..._"
+    )
+    send_telegram_msg(initial_msg)
     
     while True:
         with lock:
