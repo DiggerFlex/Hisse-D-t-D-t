@@ -4,7 +4,6 @@ import threading
 import os
 import requests
 import feedparser
-import yfinance as yf
 import pandas as pd
 import numpy as np
 from dateutil import parser
@@ -32,6 +31,7 @@ def run_flask():
 TELEGRAM_BOT_TOKEN = "8750813780:AAHKpVFsxqT6BgYbISMZhiAp-ryzNsZ8IZY"
 TELEGRAM_CHAT_ID = "7743041008"
 RENDER_DEPLOY_HOOK_URL = "https://api.render.com/deploy/srv-daemtan40ujc73ft425g?key=o1ghEoCwW10"
+POLYGON_API_KEY = "2MCQinSzcjSGpa2NtrgML6xHrYCK4tLZ"
 MAX_PRICE_LIMIT = 3.00
 
 bildirilenler = set()       
@@ -222,7 +222,37 @@ def get_penny_stocks():
 
 
 # ==========================================
-# 5. HEDEF VE KIRILIM MOTORU
+# 5. POLYGON.IO VERİ ÇEKME FONKSİYONU
+# ==========================================
+def get_polygon_history(symbol):
+    try:
+        url = f"https://api.polygon.io/v2/aggs/ticker/{symbol}/range/1/minute/2026-01-01/2026-12-31"
+        params = {
+            "adjusted": "true",
+            "sort": "desc",
+            "limit": 50,
+            "apiKey": POLYGON_API_KEY
+        }
+        res = requests.get(url, params=params, timeout=5).json()
+        
+        if "results" in res and res["results"]:
+            df = pd.DataFrame(res["results"])
+            df = df.iloc[::-1].reset_index(drop=True)
+            df.rename(columns={
+                'c': 'Close',
+                'o': 'Open',
+                'h': 'High',
+                'l': 'Low',
+                'v': 'Volume'
+            }, inplace=True)
+            return df
+        return pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+
+# ==========================================
+# 6. HEDEF VE KIRILIM MOTORU
 # ==========================================
 def calculate_dynamic_targets(df, last_price):
     try:
@@ -263,20 +293,17 @@ def detect_breakout_type(df, vol_ratio, resistance, last_price):
 
 
 # ==========================================
-# 6. CANLI TARAMA VE ALARM
+# 7. CANLI TARAMA VE ALARM
 # ==========================================
 def process_symbol(symbol, force_send=False):
     try:
         if not force_send and symbol in bildirilenler:
             return
 
-        ticker = yf.Ticker(symbol)
-        df = ticker.history(period="1d", interval="1m", prepost=True)
+        df = get_polygon_history(symbol)
 
         if df.empty:
-            df = ticker.history(period="5d", interval="1m", prepost=True)
-            if df.empty:
-                return
+            return
 
         last_price = df['Close'].iloc[-1]
         open_price = df['Open'].iloc[-1]
@@ -325,7 +352,6 @@ def process_symbol(symbol, force_send=False):
         
         send_telegram_msg(msg)
         
-        # Gün sonu raporunda kullanmak üzere hedefleri kaydediyoruz
         if symbol not in gunluk_sinyaller:
             gunluk_sinyaller[symbol] = {
                 'entry': last_price,
@@ -338,7 +364,7 @@ def process_symbol(symbol, force_send=False):
 
 
 # ==========================================
-# 7. HABER MODÜLÜ
+# 8. HABER MODÜLÜ
 # ==========================================
 def kritik_piyasa_etkisi_analiz_et(metin):
     metin_lower = metin.lower()
@@ -395,7 +421,7 @@ def haber_tarama_loop():
 
 
 # ==========================================
-# 8. BİREBİR GÖRSEL FORMATINDA GÜN SONU RAPORU
+# 9. GÜN SONU RAPORU
 # ==========================================
 def gun_sonu_raporu_gonder():
     global gunluk_sinyaller
@@ -409,8 +435,7 @@ def gun_sonu_raporu_gonder():
 
     for symbol, data in gunluk_sinyaller.items():
         try:
-            ticker = yf.Ticker(symbol)
-            df = ticker.history(period="1d", interval="1m", prepost=True)
+            df = get_polygon_history(symbol)
             
             entry = data['entry']
             tp1 = data.get('tp1', entry * 1.05)
@@ -418,7 +443,6 @@ def gun_sonu_raporu_gonder():
             
             zirve = df['High'].max() if not df.empty else entry
             
-            # Kademe durumu kontrolü
             if zirve >= tp2:
                 kademe_str = "(TÜM kademeler tamam)"
                 hedef_fiyat = tp2
@@ -431,7 +455,6 @@ def gun_sonu_raporu_gonder():
 
             kar_pct = ((zirve - entry) / entry) * 100
             
-            # Roket/Kese emojileri
             if kar_pct >= 50:
                 emoji = "🚀🚀🚀"
             elif kar_pct >= 20:
@@ -441,7 +464,6 @@ def gun_sonu_raporu_gonder():
 
             rapor += f"🟢 *{symbol}* ➔ `{entry:.2f}` ➡️ `{hedef_fiyat:.2f}` {kademe_str} | `%{kar_pct:.2f}` kâr {emoji}\n"
             
-            # Ekstra yüksek patlama yaptıysa alt bilgi ekle (Görseldeki gibi)
             if zirve > tp2 * 1.05 and kar_pct > 15:
                 rapor += f"└ Gün içi {zirve:.2f}'e yükseldi ➔ anlık %{kar_pct:.2f} 🔥\n"
 
@@ -490,7 +512,7 @@ def piyasa_zaman_kontrolu():
 
 
 # ==========================================
-# 9. ANA DÖNGÜ
+# 10. ANA DÖNGÜ
 # ==========================================
 def canli_kesintisiz_tarama():
     piyasa_zaman_kontrolu()
@@ -499,7 +521,7 @@ def canli_kesintisiz_tarama():
     if not symbols:
         return
 
-    with ThreadPoolExecutor(max_workers=20) as executor:
+    with ThreadPoolExecutor(max_workers=10) as executor:
         executor.map(process_symbol, symbols)
 
 def start_scanner_loop():
@@ -507,7 +529,7 @@ def start_scanner_loop():
         "⚡ *NASDAQ TERMINAL ONLINE* ⚡\n"
         "━━━━━━━━━━━━━━━━━━━━━\n\n"
         "🎯 *Limit:* `$3.00 ve Altı`\n"
-        "📊 *Kapsam:* `Tüm NASDAQ`\n\n"
+        "📊 *Kapsam:* `Tüm NASDAQ (Polygon.io Engine)`\n\n"
         "_Tarama başlatıldı..._"
     )
     send_telegram_msg(welcome_msg)
