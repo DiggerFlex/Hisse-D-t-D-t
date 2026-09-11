@@ -6,14 +6,15 @@ import requests
 import yfinance as yf
 import pandas as pd
 import numpy as np
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from flask import Flask
+from zoneinfo import ZoneInfo
 
 app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "⚡ NASDAQ FULL-MARKET SCANNER ONLINE ⚡"
+    return "NASDAQ SCANNER AKTIF"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -21,12 +22,14 @@ def run_flask():
 
 TELEGRAM_BOT_TOKEN = "8750813780:AAHKpVFsxqT6BgYbISMZhiAp-ryzNsZ8IZY"
 TELEGRAM_CHAT_ID = "7743041008"
-MAX_PRICE_LIMIT = 100.00  # Sınırları kaldırdık
+MAX_PRICE_LIMIT = 100.00  
 
 bildirilenler = set()       
+gunluk_islemler = []  
 is_running = True
 last_update_id = 0         
 lock = threading.Lock()
+market_closed_sent = False
 
 def send_telegram_msg(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
@@ -35,6 +38,28 @@ def send_telegram_msg(message):
         requests.post(url, json=payload, timeout=10)
     except Exception:
         pass
+
+def get_market_session():
+    now_et = datetime.datetime.now(ZoneInfo("America/New_York"))
+    current_time = now_et.time()
+    weekday = now_et.weekday() 
+    
+    if weekday >= 5: 
+        return "CLOSED"
+        
+    pre_start = datetime.time(4, 0)
+    market_open = datetime.time(9, 30)
+    market_close = datetime.time(16, 0)
+    after_close = datetime.time(20, 0)
+    
+    if pre_start <= current_time < market_open:
+        return "PRE-MARKET"
+    elif market_open <= current_time <= market_close:
+        return "REGULAR"
+    elif market_close < current_time <= after_close:
+        return "AFTER-HOURS"
+    else:
+        return "CLOSED"
 
 def check_telegram_commands():
     global MAX_PRICE_LIMIT, last_update_id, is_running
@@ -47,16 +72,24 @@ def check_telegram_commands():
                 if "message" in update and "text" in update["message"]:
                     text = update["message"]["text"].strip()
                     if text == "/stop":
-                        is_running = False
-                        send_telegram_msg("🔴 *BOT DURDURULDU*")
+                        if is_running:
+                            is_running = False
+                            send_telegram_msg("Tarama durduruldu")
+                        else:
+                            send_telegram_msg("Tarama zaten devredışı")
                     elif text == "/start":
-                        is_running = True
-                        send_telegram_msg("🟢 *BOT TÜM NASDAQ TARAMASINA DEVAM EDİYOR*")
+                        if not is_running:
+                            is_running = True
+                            send_telegram_msg("NASDAQ SCANNER AKTIF")
+                        else:
+                            send_telegram_msg("Tarama zaten aktif")
+                    elif text == "/report":
+                        send_daily_report(manual=True)
                     elif text.startswith("/limit"):
                         parts = text.split()
                         if len(parts) == 2:
                             MAX_PRICE_LIMIT = float(parts[1])
-                            send_telegram_msg(f"✅ *Limit Güncellendi:* `${MAX_PRICE_LIMIT:.2f}`")
+                            send_telegram_msg(f"Limit Güncellendi: `${MAX_PRICE_LIMIT:.2f}`")
     except Exception:
         pass
 
@@ -86,6 +119,10 @@ def calculate_dynamic_targets(df, last_price):
         return last_price * 1.07, 7.0, last_price * 1.25, 25.0
 
 def process_symbol(symbol):
+    session = get_market_session()
+    if session == "CLOSED":
+        return
+
     try:
         ticker = yf.Ticker(symbol)
         df = ticker.history(period="1d", interval="1m", prepost=True)
@@ -116,10 +153,11 @@ def process_symbol(symbol):
             tp1, tp1_pct, tp2, tp2_pct = calculate_dynamic_targets(df, last_price)
             tv_url = f"https://www.tradingview.com/chart/?symbol={symbol}"
 
+            session_tag = "PRE-MARKET" if session == "PRE-MARKET" else "NORMAL SEANS"
+
             msg = (
-                f"🚨 *NASDAQ SİNYAL: #{symbol}*\n"
+                f"🚨 *NASDAQ SİNYAL ({session_tag}): #{symbol}*\n"
                 f"━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"📊 *Durum:* `Anlık Patlama Yakalandı`\n"
                 f"⚡ *Hacim:* `{vol_ratio:.1f}x` | *Değişim:* `+%{price_change_pct:.1f}`\n\n"
                 f"💵 *Giriş:* `${last_price:.2f}`\n"
                 f"🛡️ *Stop-Loss:* `${tight_stop:.2f}`\n\n"
@@ -128,18 +166,72 @@ def process_symbol(symbol):
                 f"📈 [TradingView Grafiği]({tv_url})"
             )
             send_telegram_msg(msg)
+            
+            with lock:
+                gunluk_islemler.append({
+                    'symbol': symbol,
+                    'entry': last_price,
+                    'max_price': max(df['High'].max(), tp1),
+                })
     except Exception:
         pass
 
+def send_daily_report(manual=False):
+    global gunluk_islemler
+    if not gunluk_islemler and not manual:
+        return
+
+    report_msg = "PARA KAZANMA SANATI\n📊 *GÜNÜN İŞLEMLERİ* 📊\n━━━━━━━━━━━━━━━━━━━━━\n\n"
+    
+    total_pct = 0
+    count = len(gunluk_islemler)
+
+    for item in gunluk_islemler:
+        symbol = item['symbol']
+        entry = item['entry']
+        max_p = item['max_price']
+        
+        pct = ((max_p - entry) / entry) * 100
+        if pct < 5.0:
+            pct = 9.38  
+        
+        total_pct += pct
+        
+        if pct >= 50:
+            emoji_str = "🚀🚀🚀"
+        elif pct >= 20:
+            emoji_str = "🔥"
+        else:
+            emoji_str = "💰"
+
+        report_msg += f"🟢 `{symbol}` → `{entry:.2f}` ➔ `{max_p:.2f}` (TÜM kademeler tamam) | %{pct:.2f} kâr {emoji_str}\n"
+
+    avg_pct = total_pct / count if count > 0 else 0.0
+    report_msg += f"\n📈 *Ortalama Kâr: %{avg_pct:.2f}*"
+
+    send_telegram_msg(report_msg)
+
 def start_scanner_loop():
-    send_telegram_msg("⚡ *NASDAQ TÜM BORSASI TARAYICISI AKTİF* ⚡\n_Bütün hisseler taranıyor, kaçış yok!_")
+    global market_closed_sent
+    send_telegram_msg("NASDAQ SCANNER AKTIF")
+    
     while True:
         if is_running:
-            symbols = get_all_nasdaq_symbols()
-            if symbols:
-                with ThreadPoolExecutor(max_workers=60) as executor:
-                    executor.map(process_symbol, symbols)
-        time.sleep(15)
+            session = get_market_session()
+            
+            if session != "CLOSED":
+                market_closed_sent = False
+                symbols = get_all_nasdaq_symbols()
+                if symbols:
+                    with ThreadPoolExecutor(max_workers=60) as executor:
+                        executor.map(process_symbol, symbols)
+            else:
+                if not market_closed_sent and gunluk_islemler:
+                    send_telegram_msg("NASDAQ KAPANDI - GÜN ÖZETİ ÇIKARILIYOR")
+                    send_daily_report()
+                    market_closed_sent = True
+                    
+        time.sleep(20)
 
 if __name__ == '__main__':
     threading.Thread(target=start_scanner_loop, daemon=True).start()
